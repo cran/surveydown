@@ -1,5 +1,27 @@
 # surveydown (development version)
 
+# surveydown 0.5.0
+
+- New cookies feature! Now `sd_server()` accepts a new argument `use_cookies`, defaults to `TRUE`. It enables cookies so that reopening the survey will resume the participant to where the survey was left. The database will trace to the original `session_id` and continuous the data update based on user input. If changed to `FALSE`, the survey will start as brand new session upon reopening.
+- Off-line data storage upgrade. Now if ignore mode is on, the data will be stored on the project directory with file name called `preview_data.csv`. This file works exactly the same as online database, and is compatible with cookies functionality.
+- Simplified Chinese supported in `sd_server()`. You can trigger it by: `sd_server(language = "zh-CN")`.
+- Improvement: default language behavior in UI functions cleaner when separately rendering survey.qmd file.
+- Byg fix: There used to be a bug if multiple themes are defined in YAML. Now it's solved.
+
+# surveydown 0.4.2
+
+- New "translations" feature now supported (see PR #138). This allows system messages and date formats to be specified by a language using the `language` argument in `sd_server()`. Custom language messages can be further modified by providing a `translations.yml` file in the root project folder.
+- Added new `sd_create_translations()` function to generate a template `translations.yml` file to use to edit the system messages.
+- Added Stefan Munnes as contributor in DESCRIPTION file (`ctb`)
+- Bug fix: The `is_matrix` metadata was not recorded for matrix sub-questions when exported into the `_survey/questions.yml` file, which caused an error if any matrix question was required. This is now corrected when obtaining the question structure from the stored `_survey/questions.yml` file.
+
+# surveydown 0.4.1
+
+- Modified survey rendering to move all rendered files into "_survey" folder.
+- Export survey question metadata to "_survey/questions.yml" file (see #132).
+- Survey content is now extracted and saved to '_survey/pages.rds', '_survey/head.rds', and '_survey/questions.yml' files for faster loading.
+- Survey will load content from stored files if no changes detected in 'survey.qmd' or 'app.R' files.
+
 # surveydown 0.4.0
 
 - All examples updated to include run-able examples (where possible).

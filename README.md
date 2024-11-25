@@ -3,6 +3,14 @@
 
 # surveydown
 
+<!-- badges: start -->
+
+[![CRAN
+status](https://www.r-pkg.org/badges/version/surveydown)](https://CRAN.R-project.org/package=surveydown)
+[![metacran
+downloads](https://cranlogs.r-pkg.org/badges/grand-total/surveydown)](https://cran.r-project.org/package=surveydown)
+<!-- badges: end -->
+
 > Note: This site only documents the {surveydown} R package - visit our
 > main site at [surveydown.org](https://surveydown.org) for more
 > information!
@@ -51,13 +59,24 @@ we also like [VSCode](https://code.visualstudio.com/) and
 
 ### Install the {surveydown} R package
 
-The {surveydown} R package is not yet on CRAN, but you can install the
-development version from GitHub with the following command in your R
-console:
+You can install {surveydown} from CRAN in your R console:
+
+``` r
+install.packages("surveydown")
+```
+
+or you can install the development version from
+[GitHub](https://github.com/surveydown-dev/surveydown):
 
 ``` r
 # install.packages("pak")
 pak::pak('surveydown-dev/surveydown')
+```
+
+Load the package with:
+
+``` r
+library(surveydown)
 ```
 
 You can also check which version you have installed:
@@ -123,13 +142,13 @@ to the project:
   <https://shinysurveys.jdtrat.com/articles/get-survey-data.html>
 - [x] Ability to pass url parameters, e.g. for tracking users.
 - [x] Ability to redirect users to another url.
+- [x] Leverage cookies so users who close the browser can start back
+  where they left off.
 - [ ] Admin page w/password to preview / download data (see
   <https://github.com/daattali/shinyforms>)
 - [ ] Form validation: Make sure the user inputs the correct type
   depending on the question type. (see
   <https://shiny.posit.co/r/reference/shiny/0.14/validate.html>)
-- [ ] Leverage cookies so users who close the browser can start back
-  where they left off.
 - Question types:
   - [x] Multiple choice (single choice)
   - [x] Multiple choice (multiple choices)
