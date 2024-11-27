@@ -54,7 +54,7 @@ your own surveydown survey!**
 We also recommend working with an IDE that has good support for R,
 Quarto, and Shiny.
 [RStudio](https://posit.co/products/open-source/rstudio/) is great, and
-we also like [VSCode](https://code.visualstudio.com/) and
+we also like [VSCode](https://github.com/microsoft/vscode) and
 [Positron](https://github.com/posit-dev/positron).
 
 ### Install the {surveydown} R package
@@ -142,7 +142,7 @@ to the project:
   <https://shinysurveys.jdtrat.com/articles/get-survey-data.html>
 - [x] Ability to pass url parameters, e.g. for tracking users.
 - [x] Ability to redirect users to another url.
-- [x] Leverage cookies so users who close the browser can start back
+- [ ] Leverage cookies so users who close the browser can start back
   where they left off.
 - [ ] Admin page w/password to preview / download data (see
   <https://github.com/daattali/shinyforms>)

@@ -1,12 +1,17 @@
 # surveydown (development version)
 
+# surveydown 0.5.1
+
+- Revert mostly to v0.4.2 to completely remove the cookies feature added in v0.5.0. Will re-implement a new approach in a later version.
+- Fixed typo in error message (`data.csv` -> `preview_data.csv`).
+
 # surveydown 0.5.0
 
 - New cookies feature! Now `sd_server()` accepts a new argument `use_cookies`, defaults to `TRUE`. It enables cookies so that reopening the survey will resume the participant to where the survey was left. The database will trace to the original `session_id` and continuous the data update based on user input. If changed to `FALSE`, the survey will start as brand new session upon reopening.
 - Off-line data storage upgrade. Now if ignore mode is on, the data will be stored on the project directory with file name called `preview_data.csv`. This file works exactly the same as online database, and is compatible with cookies functionality.
 - Simplified Chinese supported in `sd_server()`. You can trigger it by: `sd_server(language = "zh-CN")`.
 - Improvement: default language behavior in UI functions cleaner when separately rendering survey.qmd file.
-- Byg fix: There used to be a bug if multiple themes are defined in YAML. Now it's solved.
+- Bug fix: There used to be a bug if multiple themes are defined in YAML. Now it's solved.
 
 # surveydown 0.4.2
 
@@ -216,7 +221,7 @@
 - (extension) Default page background is set as "#f2f6f9" (a light blue color). Can be overwritten in the YAML header with the `backgroundcolor`.
 - (extension) Questions are now encapsulated in a container that distinguishes from the descriptive texts.
 - (extension) Options of `mc_button` and `mu_multiple_buttons` types of questions are now centered.
-- Now the `surveydown::create_survey()` function will download the whole [extension repo](https://github.com/surveydown-dev/surveydown-ext/tree/main), containing the extension, an example survey, and an RStudio project.
+- Now the `surveydown::create_survey()` function will download the whole extension repo, containing the extension, an example survey, and an RStudio project.
 
 
 # surveydown 0.0.3
