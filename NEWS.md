@@ -1,5 +1,37 @@
 # surveydown (development version)
 
+# surveydown 0.7.2
+
+- Bug fix: The `mc_multiple` question type could not resume its UI if multiple options are selected. Now it's solved.
+- New feature: a new `sd_question_custom()` function is created for custom question definition. See the [`leaflet-map`](https://github.com/surveydown-dev/demos/tree/main/leaflet-map) and [`plotly`](https://github.com/surveydown-dev/demos/tree/main/plotly) demo surveys for more details.
+
+# surveydown 0.7.1
+
+- `custom` type added for `sd_question()`. Now users can create customized question types according to their own needs. A demo of leaflet map is created as well to showcase this ability.
+
+# surveydown 0.7.0
+
+- Heavy revision to how css and us dependencies are loaded. Now the `sd_ui()` function handles the rendering of the `survey.qmd` file and extracting the header contents. All surveydown css and js dependencies are loaded via a simple lua filter when rendering. This simplifies how these dependencies get loaded into the resulting shiny app.
+
+# surveydown 0.6.2
+
+- Update: Now `ignore = TRUE` in `sd_server()` will turn off cookies, regardless of the value of `use_cookies`.
+
+# surveydown 0.6.1
+
+- Cookies now contain not only the `session_id` but a complete JSON object of the current page questions, answers, and latest time stamp.
+- Increased checkpoints of data updates. Now they are: upon starting, upon proceeding to the next page, upon submitting rating or clicking the exit button, and finally, upon abruptly quitting the survey.
+
+# surveydown 0.6.0
+
+- Cookies functionality fully working, applied to both local testing and online db.
+- Bug fix: The matrix subquestions used to be counted as the last questions in order regardless of their location in the survey. It's now solved.
+
+# surveydown 0.5.2
+
+- Cookies feature fixed and back online.
+- Now upon window closure, the data will be immediately uploaded to db. A backup uploading will trigger upon session ends, which is usually after 5-10 secs upon closing the window.
+
 # surveydown 0.5.1
 
 - Revert mostly to v0.4.2 to completely remove the cookies feature added in v0.5.0. Will re-implement a new approach in a later version.

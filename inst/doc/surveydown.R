@@ -9,27 +9,27 @@ knitr::opts_chunk$set(
 )
 
 ## -----------------------------------------------------------------------------
-#  install.packages("surveydown")
+# install.packages("surveydown")
 
 ## -----------------------------------------------------------------------------
-#  # install.packages("pak")
-#  pak::pak('surveydown-dev/surveydown')
+# # install.packages("pak")
+# pak::pak('surveydown-dev/surveydown')
 
 ## -----------------------------------------------------------------------------
-#  library(surveydown)
+# library(surveydown)
 
 ## -----------------------------------------------------------------------------
-#  surveydown::sd_version()
+# surveydown::sd_version()
 
 ## -----------------------------------------------------------------------------
-#  sd_question(
-#    type  = 'mc',
-#    id    = 'penguins',
-#    label = "Which is your favorite type of penguin?",
-#    option = c(
-#      'Adélie'    = 'adelie',
-#      'Chinstrap' = 'chinstrap',
-#      'Gentoo'    = 'gentoo'
-#    )
-#  )
+# sd_question(
+#   type  = 'mc',
+#   id    = 'penguins',
+#   label = "Which is your favorite type of penguin?",
+#   option = c(
+#     'Adélie'    = 'adelie',
+#     'Chinstrap' = 'chinstrap',
+#     'Gentoo'    = 'gentoo'
+#   )
+# )
 
