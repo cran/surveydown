@@ -1,5 +1,12 @@
 # surveydown (development version)
 
+# surveydown 0.8.0
+
+- New function for setting up the database configuration: `sd_db_config()`. Stores database parameters in a local .env file. Replaces `sd_set_password()` and `sd_show_password()`, which are now depreciated.
+- New function for connecting to database: `sd_db_connect`. Replaces older `sd_database()` function, which is now depreciated.
+- New `sd_dashboard()` that locally runs an interactive shiny app for monitoring data in database.
+- Bug fix: Fixed the slider question type options. They we previously in the opposite order from all other question types (label = value), see #166.
+
 # surveydown 0.7.2
 
 - Bug fix: The `mc_multiple` question type could not resume its UI if multiple options are selected. Now it's solved.
@@ -103,7 +110,7 @@
 # surveydown 0.3.3
 
 - Enhance: `sd_server()` now has a new parameter called `auto_scroll`. It's default to `TRUE`, which enables auto scrolling that tracks the user's input, can be turned off by changing to `FALSE`. Thanks to the contribution from [Zain Hoda](https://github.com/zainhoda1).
-- Enhance: `sd_question()` now has the `"matrix"` type. The [documentation page](https://surveydown.org/question-types#matrix) is updated.
+- Enhance: `sd_question()` now has the `"matrix"` type. 
 - Enhance: Asterisk, as an indication of required questions, is now moved to the top right corner of question containers.
 - Enhance: Replaced the default shiny alert with `sweetalert`. 
 
