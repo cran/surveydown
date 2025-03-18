@@ -1,5 +1,31 @@
 # surveydown (development version)
 
+# surveydown 0.9.0
+
+- Overhauled how page skipping logic is handled for improved performance and consistency with different skipping conditions users provide.
+- The `sd_skip_if()` function is depreciated and replaced with `sd_skip_forward()` for clarity of what the function does.
+- Skipping logic is now strictly forward to avoid unintended skipping logic loops.
+
+# surveydown 0.8.4
+
+- Add support for `sd_skip_if()` to be able to use static values and reactive expressions as conditions.
+- Add support for `sd_show_if()` to be able to use static values and reactive expressions as conditions.
+
+# surveydown 0.8.3
+
+- Added `sd_reactive()` function to store reactive values in the data, addressing #179.
+
+# surveydown 0.8.2
+
+- Added `"slider_numeric"` type to `sd_question()`, which supports both single and dual numeric sliders.
+- Added the `...` argument to all question types in `sd_question()` so that users can pass other input arguments specific to each input type.
+- Move the `gssencmode` parameter out of the database settings and made it an argument in `sd_db_connect()` so that users can pass `NULL` if needed to completely ignore it when making connections.
+
+# surveydown 0.8.1
+
+- Updated the template used in `sd_create_survey()` to match the new database configuration introduced in v0.8.0.
+- Fixed [Issue 170](https://github.com/surveydown-dev/surveydown/issues/170): Now the matrix question type can have all subquestions defined as required with `sd_server(required_questions = "matrix_question")`.
+
 # surveydown 0.8.0
 
 - New function for setting up the database configuration: `sd_db_config()`. Stores database parameters in a local .env file. Replaces `sd_set_password()` and `sd_show_password()`, which are now depreciated.
@@ -10,7 +36,7 @@
 # surveydown 0.7.2
 
 - Bug fix: The `mc_multiple` question type could not resume its UI if multiple options are selected. Now it's solved.
-- New feature: a new `sd_question_custom()` function is created for custom question definition. See the [`leaflet-map`](https://github.com/surveydown-dev/demos/tree/main/leaflet-map) and [`plotly`](https://github.com/surveydown-dev/demos/tree/main/plotly) demo surveys for more details.
+- New feature: a new `sd_question_custom()` function is created for custom question definition. See the [`leaflet-map`](https://github.com/surveydown-dev/demos/tree/main/custom-leaflet-map) and [`plotly`](https://github.com/surveydown-dev/demos/tree/main/custom-plotly-chart) demo surveys for more details.
 
 # surveydown 0.7.1
 

@@ -22,7 +22,7 @@
 #' @param language Set the language for the survey system messages. Include
 #'   your own in a `translations.yml` file, or choose a built in one from
 #'   the following list: English (`"en"`), German (`"de"`), Spanish (`"es"`),
-#'   French (`"fr"`), Italian (`"it"`). Simplified Chinese (`"zh-CN"`).
+#'   French (`"fr"`), Italian (`"it"`), Simplified Chinese (`"zh-CN"`).
 #'   Defaults to `"en"`.
 #' @param use_cookies Logical. If `TRUE`, enables cookie-based session management
 #'   for storing and restoring survey progress. Defaults to `TRUE`.
@@ -110,14 +110,14 @@
 #'
 #' @export
 sd_server <- function(
-        db                     = NULL,
-        required_questions     = NULL,
-        all_questions_required = FALSE,
-        start_page             = NULL,
-        auto_scroll            = FALSE,
-        rate_survey            = FALSE,
-        language               = "en",
-        use_cookies            = TRUE
+    db                     = NULL,
+    required_questions     = NULL,
+    all_questions_required = FALSE,
+    start_page             = NULL,
+    auto_scroll            = FALSE,
+    rate_survey            = FALSE,
+    language               = "en",
+    use_cookies            = TRUE
 ) {
 
     # 1. Initialize local variables ----
@@ -135,14 +135,14 @@ sd_server <- function(
 
     # Get any skip or show conditions
     show_if <- shiny::getDefaultReactiveDomain()$userData$show_if
-    skip_if <- shiny::getDefaultReactiveDomain()$userData$skip_if
+    skip_forward <- shiny::getDefaultReactiveDomain()$userData$skip_forward
 
     # Run the configuration settings
     config <- run_config(
         required_questions,
         all_questions_required,
         start_page,
-        skip_if,
+        skip_forward,
         show_if,
         rate_survey,
         language
@@ -359,6 +359,10 @@ sd_server <- function(
     # Reactive value to track which fields have changed
     changed_fields <- shiny::reactiveVal(names(initial_data))
 
+    # Expose all_data and changed_fields to session's userData for use by sd_store_value
+    session$userData$all_data <- all_data
+    session$userData$changed_fields <- changed_fields
+
     # Update checkpoint 1 - when session starts
     shiny::isolate({
         update_data()
@@ -500,7 +504,12 @@ sd_server <- function(
         required_questions <- page$required_questions
         is_visible <- question_visibility()[required_questions]
         all(vapply(required_questions, function(q) {
-            !is_visible[q] || check_answer(q, input)
+            if (!is_visible[q]) return(TRUE)
+            if (question_structure[[q]]$is_matrix) {
+                all(sapply(question_structure[[q]]$row, function(r) check_answer(paste0(q, "_", r), input)))
+            } else {
+                check_answer(q, input)
+            }
         }, logical(1)))
     }
 
@@ -514,8 +523,14 @@ sd_server <- function(
 
                     # Figure out page ids
                     current_page_id <- page$id
-                    next_page_id <- get_default_next_page(page, page_ids, page_id_to_index)
-                    next_page_id <- handle_skip_logic(input, skip_if, current_page_id, next_page_id)
+                    next_page_id <- get_default_next_page(
+                        page, page_ids, page_id_to_index
+                    )
+                    next_page_id <- handle_skip_logic(
+                        input, skip_forward,
+                        current_page_id, next_page_id,
+                        page_id_to_index
+                    )
                     if (!is.null(next_page_id) && check_required(page)) {
                         # Set the current page as the next page
                         current_page_id(next_page_id)
@@ -622,17 +637,17 @@ sd_server <- function(
     })
 }
 
-#' Define skip conditions for survey pages
+#' Define forward skip conditions for survey pages
 #'
 #' @description
 #' This function is used to define conditions under which certain pages in the
-#' survey should be skipped. It takes one or more formulas where the left-hand
-#' side is the condition and the right-hand side is the target page ID.
+#' survey should be skipped ahead to (forward only). It takes one or more formulas
+#' where the left-hand side is the condition and the right-hand side is the target page ID.
 #'
 #' @param ... One or more formulas defining skip conditions.
 #'   The left-hand side of each formula should be a condition based on input
 #'   values, and the right-hand side should be the ID of the page to skip to if
-#'   the condition is met.
+#'   the condition is met. Only forward skipping (to pages later in the sequence) is allowed.
 #'
 #' @return A list of parsed conditions, where each element contains the
 #' condition and the target page ID.
@@ -642,7 +657,7 @@ sd_server <- function(
 #'   library(surveydown)
 #'
 #'   # Get path to example survey file
-#'   survey_path <- system.file("examples", "sd_skip_if.qmd",
+#'   survey_path <- system.file("examples", "sd_skip_forward.qmd",
 #'                              package = "surveydown")
 #'
 #'   # Copy to a temporary directory
@@ -654,8 +669,9 @@ sd_server <- function(
 #'   # Define a minimal server
 #'   server <- function(input, output, session) {
 #'
-#'     # Skip to page based on input
-#'     sd_skip_if(
+#'     # Skip forward to specific pages based on fruit selection
+#'     sd_skip_forward(
+#'       input$fav_fruit == "apple" ~ "apple_page",
 #'       input$fav_fruit == "orange" ~ "orange_page",
 #'       input$fav_fruit == "other" ~ "other_page"
 #'     )
@@ -673,21 +689,67 @@ sd_server <- function(
 #' @seealso `sd_show_if()`
 #'
 #' @export
-sd_skip_if <- function(...) {
+sd_skip_forward <- function(...) {
     conditions <- parse_conditions(...)
+    calling_env <- parent.frame()
 
-    # Create a list in userData to store the skip_if targets
+    # Process each condition
+    processed_conditions <- lapply(conditions, function(rule) {
+        tryCatch({
+            # Store the original condition for use with function calls
+            rule$original_condition <- rule$condition
+
+            # Extract any reactive expressions that might be called
+            # We're storing the environment for potential evaluation later
+            rule$calling_env <- calling_env
+
+            # # For debugging
+            # cat("Captured condition: ", deparse(rule$condition), "\n")
+
+            return(rule)
+        }, error = function(e) {
+            warning("Error processing condition: ", e$message)
+            return(rule)
+        })
+    })
+
+    # Store in userData
     shiny::isolate({
         session <- shiny::getDefaultReactiveDomain()
         if (is.null(session)) {
-            stop("sd_skip_if must be called within a Shiny reactive context")
+            stop("sd_skip_forward must be called within a Shiny reactive context")
         }
-        if (is.null(session$userData$skip_if)) {
-            session$userData$skip_if <- list()
+        if (is.null(session$userData$skip_forward)) {
+            session$userData$skip_forward <- list()
         }
-        session$userData$skip_if$conditions <- conditions
-        session$userData$skip_if$targets <- get_unique_targets(conditions)
+        session$userData$skip_forward$conditions <- processed_conditions
+        session$userData$skip_forward$targets <- get_unique_targets(processed_conditions)
     })
+}
+
+#' Define skip conditions for survey pages (Deprecated)
+#'
+#' @description
+#' This function is deprecated. Please use `sd_skip_forward()` instead.
+#'
+#' This function is used to define conditions under which certain pages in the
+#' survey should be skipped. It now behaves like `sd_skip_forward()` where only forward
+#' skipping is allowed to prevent navigation loops.
+#'
+#' @param ... One or more formulas defining skip conditions.
+#'   The left-hand side of each formula should be a condition based on input
+#'   values, and the right-hand side should be the ID of the page to skip to if
+#'   the condition is met.
+#'
+#' @return A list of parsed conditions, where each element contains the
+#' condition and the target page ID.
+#'
+#' @export
+sd_skip_if <- function(...) {
+    # v0.9.0
+    .Deprecated("sd_skip_forward()")
+
+    sd_skip_forward(...)
 }
 
 #' Define show conditions for survey questions
@@ -736,11 +798,32 @@ sd_skip_if <- function(...) {
 #'   setwd(orig_dir)
 #' }
 #'
-#' @seealso `sd_skip_if()`
+#' @seealso `sd_skip_forward()`
 #'
 #' @export
 sd_show_if <- function(...) {
     conditions <- parse_conditions(...)
+    calling_env <- parent.frame()
+
+    # Process each condition
+    processed_conditions <- lapply(conditions, function(rule) {
+        tryCatch({
+            # Store the original condition for use with function calls
+            rule$original_condition <- rule$condition
+
+            # Store the calling environment for later evaluation
+            rule$calling_env <- calling_env
+
+            # # For debugging
+            # cat("Captured show_if condition: ", deparse(rule$condition), "\n")
+
+            return(rule)
+        }, error = function(e) {
+            warning("Error processing show_if condition: ", e$message)
+            return(rule)
+        })
+    })
+
     # Create a list in userData to store the show_if targets
     shiny::isolate({
         session <- shiny::getDefaultReactiveDomain()
@@ -750,8 +833,8 @@ sd_show_if <- function(...) {
         if (is.null(session$userData$show_if)) {
             session$userData$show_if <- list()
         }
-        session$userData$show_if$conditions <- conditions
-        session$userData$show_if$targets <- get_unique_targets(conditions)
+        session$userData$show_if$conditions <- processed_conditions
+        session$userData$show_if$targets <- get_unique_targets(processed_conditions)
     })
 }
 
@@ -950,18 +1033,119 @@ sd_store_value <- function(value, id = NULL) {
         if (is.null(session)) {
             stop("sd_store_value must be called from within a Shiny reactive context")
         }
+
+        # Initialize stored_values if it doesn't exist
         if (is.null(session$userData$stored_values)) {
             session$userData$stored_values <- list()
         }
+
         formatted_value <- format_question_value(value)
         session$userData$stored_values[[id]] <- formatted_value
 
         # Make value accessible in the UI
         output <- shiny::getDefaultReactiveDomain()$output
         output[[paste0(id, "_value")]] <- shiny::renderText({ formatted_value })
+
+        # Get access to all_data and update it if available
+        # This allows the stored value to be accessible through sd_output
+        if (!is.null(session$userData$all_data)) {
+            session$userData$all_data[[id]] <- formatted_value
+            # Add to changed fields to trigger database update
+            if (!is.null(session$userData$changed_fields)) {
+                current_fields <- session$userData$changed_fields()
+                session$userData$changed_fields(c(current_fields, id))
+            }
+        }
     })
 
     invisible(NULL)
+}
+
+#' Create a reactive value that is also stored in survey data
+#'
+#' This function creates a reactive value similar to Shiny's reactive() function,
+#' but also automatically stores the calculated value in the survey data.
+#'
+#' @param id Character string. The id (name) of the value to be stored in the data.
+#' @param expr An expression that calculates a value based on inputs
+#' @param blank_na Logical. If TRUE, NA values are converted to empty strings. Default is TRUE.
+#'
+#' @return A reactive expression that can be called like a function
+#'
+#' @examples
+#' \dontrun{
+#' # In your server function:
+#' product <- sd_reactive("product", {
+#'   input$first_number * input$second_number
+#' })
+#'
+#' # Use the reactive value elsewhere
+#' output$result <- renderText({
+#'   paste("The product is:", product())
+#' })
+#'
+#' # In your survey.qmd file, display the value:
+#' The product is: `r sd_output("product", type = "value")`.
+#' }
+#'
+#' @export
+sd_reactive <- function(id, expr, blank_na = TRUE) {
+    # Validate id
+    if (!is.character(id) || length(id) != 1) {
+        stop("'id' must be a single character string")
+    }
+
+    # Capture the expression and its environment
+    expr_call <- substitute(expr)
+    expr_env <- parent.frame()
+
+    # Create a reactive expression
+    reactive_expr <- shiny::reactive({
+        # Get current session
+        session <- shiny::getDefaultReactiveDomain()
+        if (is.null(session)) {
+            warning("sd_reactive() must be called within a Shiny reactive context")
+            return(NULL)
+        }
+
+        # Use tryCatch to safely evaluate the expression
+        tryCatch({
+            # Evaluate the expression in its original environment
+            result <- eval(expr_call, envir = expr_env)
+
+            # Store the value in the survey data
+            if (is.null(result) || (length(result) == 1 && is.na(result))) {
+                sd_store_value("", id)
+                return(if (blank_na) "" else result)
+            } else {
+                sd_store_value(result, id)
+                return(result)
+            }
+        }, error = function(e) {
+            warning("Error in sd_reactive for ", id, ": ", e$message)
+            sd_store_value("", id)
+            return(if (blank_na) "" else NULL)
+        })
+    })
+
+    # Auto-trigger the evaluation once to ensure value is available
+    # This creates an observer that will run once when the session initializes
+    shiny::observeEvent(shiny::getDefaultReactiveDomain()$clientData, {
+        # This forces the reactive to run once right away
+        reactive_expr()
+    }, once = TRUE)
+
+    # Create a separate observer that will monitor the reactive expression
+    shiny::observe({
+        # Wrap in tryCatch to prevent errors from crashing the app
+        tryCatch({
+            reactive_expr()
+        }, error = function(e) {
+            warning("Error in sd_reactive observer for ", id, ": ", e$message)
+        })
+    })
+
+    return(reactive_expr)
 }
 
 #' Create a copy of a value
@@ -1144,10 +1328,21 @@ parse_conditions <- function(...) {
 }
 
 evaluate_condition <- function(rule) {
-    isTRUE(eval(
-        rule$condition,
-        envir = list(input = shiny::getDefaultReactiveDomain()$input)
-    ))
+    # Create a safe evaluation environment that can handle reactive expressions
+    session <- shiny::getDefaultReactiveDomain()
+    eval_env <- list(input = session$input)
+
+    # Try to evaluate using the original condition (which might have function calls)
+    tryCatch({
+        # Use both the original calling environment and the input
+        result <- eval(rule$original_condition,
+                       envir = rule$calling_env,
+                       enclos = environment())
+        return(isTRUE(result))
+    }, error = function(e) {
+        warning("Error in condition evaluation: ", e$message)
+        return(FALSE)
+    })
 }
 
 get_stored_vals <- function(session) {
@@ -1214,30 +1409,51 @@ get_default_next_page <- function(page, page_ids, page_id_to_index) {
     return(next_page_id)
 }
 
-handle_skip_logic <- function(input, skip_if, current_page_id, next_page_id) {
-    if (is.null(next_page_id) | is.null(skip_if)) { return(next_page_id) }
+handle_skip_logic <- function(
+    input, skip_forward, current_page_id, next_page_id, page_id_to_index
+) {
+    if (is.null(next_page_id) | is.null(skip_forward)) {
+        return(next_page_id)
+    }
 
-    # Loop through each skip logic condition
-    conditions <- skip_if$conditions
-    for (i in seq_along(conditions)) {
-        rule <- conditions[[i]]
+    # Get the current page index and page object
+    current_page_index <- page_id_to_index[current_page_id]
 
-        # Evaluate the condition
-        condition_result <- tryCatch({
-            evaluate_condition(rule)
-        }, error = function(e) {
-            warning(sprintf(
-                "Error in skip_if condition for target '%s': %s",
-                rule$target, conditionMessage(e))
-            )
-            FALSE
-        })
+    # Loop through each skip forward logic condition
+    if (!is.null(skip_forward) && !is.null(skip_forward$conditions)) {
+        conditions <- skip_forward$conditions
+        for (i in seq_along(conditions)) {
+            rule <- conditions[[i]]
 
-        # Check if the condition is met
-        if (condition_result & (current_page_id != rule$target)) {
-            return(rule$target)
+            # Ignore the condition if already on target page
+            if (current_page_id == rule$target) {
+                next
+            }
+
+            # Ignore the condition if not a forward direction skip
+            target_page_index <- page_id_to_index[rule$target]
+            if (target_page_index <= current_page_index) {
+                next
+            }
+
+            # Evaluate the condition
+            condition_result <- tryCatch({
+                evaluate_condition(rule)
+            }, error = function(e) {
+                warning(sprintf(
+                    "Error in sd_skip_forward condition for target '%s': %s",
+                    rule$target, conditionMessage(e))
+                )
+                FALSE
+            })
+
+            # Check if the condition is met
+            if (condition_result) {
+                return(rule$target)
+            }
         }
     }
+
     return(next_page_id)
 }
 

@@ -1,6 +1,6 @@
 Package: surveydown
 Title: Markdown-Based Surveys Using 'Quarto' and 'shiny'
-Version: 0.8.0
+Version: 0.9.0
 Authors@R: c(
     person("John Paul", "Helveston", , "john.helveston@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-2657-9191")),
@@ -36,7 +36,7 @@ Suggests: glue, knitr, leaflet, testthat
 Encoding: UTF-8
 RoxygenNote: 7.3.2
 NeedsCompilation: no
-Packaged: 2025-01-27 11:21:29 UTC; jhelvy
+Packaged: 2025-03-18 15:19:30 UTC; jhelvy
 Author: John Paul Helveston [aut, cre, cph]
     (<https://orcid.org/0000-0002-2657-9191>),
   Pingfan Hu [aut, cph] (<https://orcid.org/0009-0001-4877-4844>),
@@ -44,4 +44,4 @@ Author: John Paul Helveston [aut, cre, cph]
   Stefan Munnes [ctb]
 Maintainer: John Paul Helveston <john.helveston@gmail.com>
 Repository: CRAN
-Date/Publication: 2025-01-27 11:30:04 UTC
+Date/Publication: 2025-03-18 15:40:02 UTC

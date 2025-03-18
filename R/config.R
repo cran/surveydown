@@ -2,7 +2,7 @@ run_config <- function(
     required_questions,
     all_questions_required,
     start_page,
-    skip_if,
+    skip_forward,
     show_if,
     rate_survey,
     language
@@ -77,9 +77,11 @@ run_config <- function(
     start_page <- page_ids[1]
   }
 
-  # Check skip_if and show_if inputs
+  # Check skip_forward and show_if inputs
   question_values <- unname(unlist(lapply(question_structure, `[[`, "options")))
-  check_skip_show(question_ids, question_values, page_ids, skip_if, show_if)
+  check_skip_show(
+    question_ids, question_values, page_ids, skip_forward, show_if
+  )
 
   # Store all config settings
   config <- list(
@@ -234,18 +236,26 @@ extract_html_pages <- function(
 
         # Determine if the question is required
         is_required <- if (is_matrix) {
-          FALSE  # Matrix questions are not required by default
+            all_questions_required || question_id %in% required_questions
         } else if (all_questions_required) {
-          TRUE
+            TRUE
         } else {
-          question_id %in% required_questions
+            question_id %in% required_questions
         }
 
         # Track required questions and display asterisk
         if (is_required) {
-          asterisk <- rvest::html_element(container, ".hidden-asterisk")
-          xml2::xml_attr(asterisk, "style") <- "display: inline;"
-          required_question_ids <- c(required_question_ids, question_id)
+            if (is_matrix) {
+                # Only show asterisks for subquestions, not the main matrix question
+                sub_asterisks <- rvest::html_elements(container, ".matrix-question td .hidden-asterisk")
+                for (asterisk in sub_asterisks) {
+                    xml2::xml_attr(asterisk, "style") <- "display: inline;"
+                }
+            } else {
+                asterisk <- rvest::html_element(container, ".hidden-asterisk")
+                xml2::xml_attr(asterisk, "style") <- "display: inline;"
+            }
+            required_question_ids <- c(required_question_ids, question_id)
         }
         if (!is.null(show_if)) {
           if (question_id %in% show_if$targets) {
@@ -471,13 +481,13 @@ get_output_ids <- function() {
 }
 
 check_skip_show <- function(
-    question_ids, question_values, page_ids, skip_if, show_if
+    question_ids, question_values, page_ids, skip_forward, show_if
 ) {
-  if (!is.null(skip_if)) {
-    invalid_skip_targets <- setdiff(skip_if$targets, page_ids)
+  if (!is.null(skip_forward)) {
+    invalid_skip_targets <- setdiff(skip_forward$targets, page_ids)
     if (length(invalid_skip_targets) > 0) {
       stop(sprintf(
-        "Invalid skip_if targets: %s. These must be valid page IDs.",
+        "Invalid sd_skip_forward targets: %s. These must be valid page IDs.",
         paste(invalid_skip_targets, collapse = ", "))
       )
     }
