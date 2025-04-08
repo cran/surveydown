@@ -9,11 +9,11 @@ footer: "Made with [surveydown](https://surveydown.org)"
 library(surveydown)
 ```
 
-::: {#welcome .sd-page}
+::: {.sd_page id=welcome}
 
 # Welcome to our survey!
 
-This is a simple demonstration of a surveydown survey. It has two pages with one question on each page.
+This is a plain template of a surveydown survey. It has two pages with one question on each page.
 
 Here is a basic "multiple choice" question:
 
@@ -38,7 +38,7 @@ sd_next(next_page = 'page2')
 
 :::
 
-::: {#page2 .sd-page}
+::: {.sd_page id=page2}
 
 This is another page in your survey.
 
@@ -56,14 +56,14 @@ sd_next()
 
 :::
 
-::: {#end .sd-page}
+::: {.sd_page id=end}
 
 ## End
 
 This it the last page in the survey.
 
 ```{r}
-sd_close("Exit Survey")
+sd_close()
 ```
 
 :::

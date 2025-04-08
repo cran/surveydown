@@ -1,5 +1,23 @@
 # surveydown (development version)
 
+# surveydown 0.10.1
+
+- `sd_create_survey()` now accepts two arguments. The `template` argument is by default `"plain_template"`, which creates a default plain template of surveydown. It also accepts a list of templates that we created in the [templates repo](https://github.com/surveydown-dev/templates/tree/main). The `path` argument is unchanged. It defines the relative path of the template location.
+
+# surveydown 0.10.0
+
+- New feature: gadgets added for creating survey pages and questions. It can be triggered under the "Addins" menu on the top of RStudio window, or by keyboard shortcut. To set up keyboard shortcut, go to "Tools -> Addins -> Browse Addins..."
+- Recommended page fence structure changed to: `.sd_page id=page_id`. The previous structure also works.
+- Updated template (triggered by `sd_create_survey()`) to match with new recommended page structure.
+- Remove `sd_show_password()` function entirely (previously was depreciated)
+- Remove the dependency on `usethis` package
+- Created internal `yesno()` function to replace `usethis::ui_yeah()`
+
+# surveydown 0.9.1
+
+- `sd_dashboard()` now accepts an argument of `gssencmode`, defaults to `"prefer"`. This is same logic as the `gssencmode` argument in `sd_db_connect()`.
+- To further explain this update, both `sd_dashboard()` and `sd_db_connect()` accepts the `gssencmode` argument to embrace the different `gssencmode` situations of the internet connection. It is not embedded into `sd_db_config()` because `gssencmode` is not accessible for all connections (some may have `NULL`). This extra argument for `sd_dashboard()` and `sd_db_connect()` can be considered as a work-around.
+
 # surveydown 0.9.0
 
 - Overhauled how page skipping logic is handled for improved performance and consistency with different skipping conditions users provide.
@@ -36,7 +54,7 @@
 # surveydown 0.7.2
 
 - Bug fix: The `mc_multiple` question type could not resume its UI if multiple options are selected. Now it's solved.
-- New feature: a new `sd_question_custom()` function is created for custom question definition. See the [`leaflet-map`](https://github.com/surveydown-dev/demos/tree/main/custom-leaflet-map) and [`plotly`](https://github.com/surveydown-dev/demos/tree/main/custom-plotly-chart) demo surveys for more details.
+- New feature: a new `sd_question_custom()` function is created for custom question definition. See the [`leaflet-map`](https://github.com/surveydown-dev/templates/tree/main/custom_leaflet_map) and [`plotly`](https://github.com/surveydown-dev/templates/tree/main/custom_plotly_chart) template surveys for more details.
 
 # surveydown 0.7.1
 

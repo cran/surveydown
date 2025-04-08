@@ -1,6 +1,6 @@
 Package: surveydown
-Title: Markdown-Based Surveys Using 'Quarto' and 'shiny'
-Version: 0.9.0
+Title: Markdown-Based Programmable Surveys Using 'Quarto' and 'shiny'
+Version: 0.10.1
 Authors@R: c(
     person("John Paul", "Helveston", , "john.helveston@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-2657-9191")),
@@ -10,7 +10,7 @@ Authors@R: c(
            comment = c(ORCID = "0009-0006-2942-0588")),
     person("Stefan", "Munnes", , "stefan.munnes@wzb.eu", role = "ctb")
   )
-Description: Generate surveys using markdown and R code chunks. Surveys
+Description: Generate programmable surveys using markdown and R code chunks. Surveys
     are composed of two files: a survey.qmd 'Quarto' file defining the
     survey content (pages, questions, etc), and an app.R file defining a
     'shiny' app with global settings (libraries, database configuration,
@@ -30,13 +30,13 @@ URL: https://pkg.surveydown.org
 BugReports: https://github.com/surveydown-dev/surveydown/issues
 Depends: R (>= 4.1.0)
 Imports: bslib, cli, DBI, dotenv, DT, fs, htmltools, jsonlite,
-        markdown, pool, quarto, RPostgres, rstudioapi, rvest, shiny,
-        shinyjs, shinyWidgets, usethis, utils, xml2, yaml
+        markdown, miniUI, pool, quarto, RPostgres, rstudioapi, rvest,
+        shiny, shinyjs, shinyWidgets, utils, xml2, yaml
 Suggests: glue, knitr, leaflet, testthat
 Encoding: UTF-8
 RoxygenNote: 7.3.2
 NeedsCompilation: no
-Packaged: 2025-03-18 15:19:30 UTC; jhelvy
+Packaged: 2025-04-08 13:23:47 UTC; jhelvy
 Author: John Paul Helveston [aut, cre, cph]
     (<https://orcid.org/0000-0002-2657-9191>),
   Pingfan Hu [aut, cph] (<https://orcid.org/0009-0001-4877-4844>),
@@ -44,4 +44,4 @@ Author: John Paul Helveston [aut, cre, cph]
   Stefan Munnes [ctb]
 Maintainer: John Paul Helveston <john.helveston@gmail.com>
 Repository: CRAN
-Date/Publication: 2025-03-18 15:40:02 UTC
+Date/Publication: 2025-04-08 13:40:02 UTC
