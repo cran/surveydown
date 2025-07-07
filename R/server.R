@@ -26,6 +26,11 @@
 #'   Defaults to `"en"`.
 #' @param use_cookies Logical. If `TRUE`, enables cookie-based session management
 #'   for storing and restoring survey progress. Defaults to `TRUE`.
+#' @param highlight_unanswered Logical. If `TRUE`, enables highlighting
+#'   of all unanswered questions on page display. Defaults to `TRUE`.
+#' @param highlight_color Character string. Color for highlighting unanswered
+#'   questions. Options are "blue", "orange", "green", "purple", "gray", or "grey".
+#'   Defaults to "gray".
 #'
 #' @details
 #' The function performs the following tasks:
@@ -94,7 +99,9 @@
 #'       auto_scroll = FALSE,
 #'       rate_survey = FALSE,
 #'       language = "en",
-#'       use_cookies = TRUE
+#'       use_cookies = TRUE,
+#'       highlight_unanswered = TRUE,
+#'       highlight_color = "gray"
 #'     )
 #'   }
 #'
@@ -117,7 +124,9 @@ sd_server <- function(
     auto_scroll            = FALSE,
     rate_survey            = FALSE,
     language               = "en",
-    use_cookies            = TRUE
+    use_cookies            = TRUE,
+    highlight_unanswered   = TRUE,
+    highlight_color        = "gray"
 ) {
 
     # 1. Initialize local variables ----
@@ -129,6 +138,11 @@ sd_server <- function(
     session    <- get("session", envir = parent_env)
 
     session$userData$db <- db
+
+    # Normalize color spelling (handle both gray and grey)
+    if (highlight_color == "grey") {
+        highlight_color <- "gray"
+    }
 
     # Tag start time
     time_start <- get_utc_timestamp()
@@ -199,26 +213,43 @@ sd_server <- function(
 
     # 2. show_if conditions ----
 
+    # Separate page and question conditions
+    separated_conditions <- if (!is.null(show_if)) {
+        separate_show_if_conditions(show_if$conditions, page_ids, question_ids)
+    } else {
+        list(page_conditions = list(), question_conditions = list())
+    }
+    page_conditions <- separated_conditions$page_conditions
+    question_conditions <- separated_conditions$question_conditions
+
+    # Store page conditions for use in navigation
+    session$userData$page_conditions <- page_conditions
+
     # Reactive to store visibility status of all questions
     question_visibility <- shiny::reactiveVal(
         stats::setNames(rep(TRUE, length(question_ids)), question_ids)
     )
 
-    # Observer to apply show_if conditions and update question_visibility
-    shiny::observe({
-        shiny::reactiveValuesToList(input)
-        show_if_results <- set_show_if_conditions(show_if)()
-        current_visibility <- question_visibility()
-        for (target in names(show_if_results)) {
-            current_visibility[target] <- show_if_results[[target]]
-            if (show_if_results[[target]]) {
-                shinyjs::show(paste0('container-', target))
-            } else {
-                shinyjs::hide(paste0('container-', target))
+    # Observer to apply show_if conditions and update question_visibility (questions only)
+    if (length(question_conditions) > 0) {
+        # Create a modified show_if object with only question conditions
+        question_show_if <- list(conditions = question_conditions)
+        
+        shiny::observe({
+            shiny::reactiveValuesToList(input)
+            show_if_results <- set_show_if_conditions(question_show_if)()
+            current_visibility <- question_visibility()
+            for (target in names(show_if_results)) {
+                current_visibility[target] <- show_if_results[[target]]
+                if (show_if_results[[target]]) {
+                    shinyjs::show(paste0('container-', target))
+                } else {
+                    shinyjs::hide(paste0('container-', target))
+                }
             }
-        }
-        question_visibility(current_visibility)
-    })
+            question_visibility(current_visibility)
+        })
+    }
 
     # 3. Update data ----
 
@@ -381,6 +412,7 @@ sd_server <- function(
                 value                <- input[[local_id]]
                 formatted_value      <- format_question_value(value)
                 all_data[[local_id]] <- formatted_value
+                
 
                 # Update timestamp and progress if interacted
                 changed <- local_id
@@ -426,6 +458,89 @@ sd_server <- function(
             ignoreInit = TRUE)
         })
     })
+
+    # Manual range observers for range sliders auto-save
+    lapply(seq_along(question_ids), function(index) {
+        local({
+            local_id    <- question_ids[index]
+            local_ts_id <- question_ts_ids[index]
+            manual_id   <- paste0(local_id, "_manual_range")
+
+            shiny::observeEvent(input[[manual_id]], {
+                
+                # Tag event time and update value  
+                timestamp            <- get_utc_timestamp()
+                value                <- input[[manual_id]]
+                formatted_value      <- format_question_value(value)
+                all_data[[local_id]] <- formatted_value
+
+                # Always update timestamp for manual range (auto-save scenario)
+                changed <- local_id
+                all_data[[local_ts_id]] <- timestamp
+                changed <- c(changed, local_ts_id)
+                
+                # Update progress if interacted
+                if (!is.null(input[[paste0(local_id, "_interacted")]])) {
+                    update_progress_bar(index)
+                }
+
+                # Update tracker of which fields changed
+                changed_fields(c(changed_fields(), changed))
+
+                # Get question labels and values from question structure
+                question_info  <- question_structure[[local_id]]
+                label_question <- question_info$label
+                options        <- question_info$options
+                label_options  <- names(options)
+
+                # For the selected value(s), get the corresponding label(s)
+                if (length(options) == length(label_options)) {
+                    names(options) <- label_options
+                }
+                label_option <- if (is.null(value) || length(value) == 0) {
+                    ""
+                } else {
+                    options[options %in% value] |>
+                        names() |>
+                        paste(collapse = ", ")
+                }
+
+                # Store the values and labels in output
+                output[[paste0(local_id, "_value")]] <- shiny::renderText({
+                    formatted_value
+                })
+                output[[paste0(local_id, "_label_option")]] <- shiny::renderText({
+                    label_option
+                })
+                output[[paste0(local_id, "_label_question")]] <- shiny::renderText({
+                    label_question
+                })
+            },
+            ignoreNULL = FALSE,
+            ignoreInit = TRUE)
+        })
+    })
+
+    # Auto-save timestamp observers
+    lapply(seq_along(question_ids), function(index) {
+        local({
+            local_id    <- question_ids[index]
+            local_ts_id <- question_ts_ids[index]
+            autosave_ts_id <- paste0(local_id, "_autosave_timestamp")
+
+            shiny::observeEvent(input[[autosave_ts_id]], {
+                # Force timestamp update for auto-saved questions
+                if (!is.null(input[[paste0(local_id, "_interacted")]])) {
+                    timestamp <- get_utc_timestamp()
+                    all_data[[local_ts_id]] <- timestamp
+                    changed_fields(c(changed_fields(), local_ts_id))
+                }
+            },
+            ignoreNULL = TRUE,
+            ignoreInit = TRUE)
+        })
+    })
+
 
     # Observer to update cookies with answers
     shiny::observe({
@@ -497,41 +612,163 @@ sd_server <- function(
             )
         )
     })
+    
+    # Observer to trigger gray highlighting for unanswered questions when page changes
+    shiny::observe({
+        if (highlight_unanswered) {
+            current_page <- get_current_page()
+            if (!is.null(current_page)) {
+                # Use JavaScript to delay highlighting until after DOM is ready and widgets initialized
+                session$sendCustomMessage("delayedHighlightCheck", list(
+                    delay = 100,  # 0.1 second delay
+                    page_id = current_page$id
+                ))
+            }
+        }
+    })
+    
+    # Observer for delayed highlighting check triggered by JavaScript
+    shiny::observeEvent(input$delayed_highlight_trigger, {
+        if (highlight_unanswered) {
+            current_page <- get_current_page()
+            if (!is.null(current_page)) {
+                unanswered_all <- get_unanswered_all(current_page)
+                
+                # Send highlighting for all unanswered questions with specified color
+                if (length(unanswered_all) > 0) {
+                    session$sendCustomMessage("highlightUnansweredQuestions", 
+                                            list(questions = unanswered_all, color = highlight_color))
+                } else {
+                    # Clear unanswered highlighting if no unanswered questions
+                    session$sendCustomMessage("clearUnansweredHighlights", list())
+                }
+            }
+        }
+    })
 
     # 7. Page navigation ----
 
     check_required <- function(page) {
         required_questions <- page$required_questions
         is_visible <- question_visibility()[required_questions]
-        all(vapply(required_questions, function(q) {
+        result <- all(vapply(required_questions, function(q) {
             if (!is_visible[q]) return(TRUE)
             if (question_structure[[q]]$is_matrix) {
-                all(sapply(question_structure[[q]]$row, function(r) check_answer(paste0(q, "_", r), input)))
+                all(sapply(question_structure[[q]]$row, function(r) check_answer(paste0(q, "_", r), input, question_structure)))
             } else {
-                check_answer(q, input)
+                check_answer(q, input, question_structure)
             }
         }, logical(1)))
+        return(result)
     }
+    
+    get_unanswered_required <- function(page) {
+        required_questions <- page$required_questions
+        if (is.null(required_questions) || length(required_questions) == 0) {
+            return(character(0))
+        }
+        
+        is_visible <- question_visibility()[required_questions]
+        unanswered <- character(0)
+        
+        for (q in required_questions) {
+            if (!is_visible[q]) next
+            
+            if (question_structure[[q]]$is_matrix) {
+                # For matrix questions, check each subquestion individually
+                for (r in question_structure[[q]]$row) {
+                    subq_id <- paste0(q, "_", r)
+                    if (!check_answer(subq_id, input, question_structure)) {
+                        unanswered <- c(unanswered, subq_id)
+                    }
+                }
+            } else {
+                if (!check_answer(q, input, question_structure)) {
+                    unanswered <- c(unanswered, q)
+                }
+            }
+        }
+        
+        return(unanswered)
+    }
+    
+    get_unanswered_all <- function(page) {
+        page_questions <- page$questions
+        if (is.null(page_questions) || length(page_questions) == 0) {
+            return(character(0))
+        }
+        
+        is_visible <- question_visibility()[page_questions]
+        unanswered <- character(0)
+        
+        for (q in page_questions) {
+            if (!is_visible[q]) next
+            
+            if (question_structure[[q]]$is_matrix) {
+                # For matrix questions, check each subquestion individually
+                for (r in question_structure[[q]]$row) {
+                    subq_id <- paste0(q, "_", r)
+                    if (!check_answer_for_highlighting(subq_id, input, question_structure)) {
+                        unanswered <- c(unanswered, subq_id)
+                    }
+                }
+            } else {
+                if (!check_answer_for_highlighting(q, input, question_structure)) {
+                    unanswered <- c(unanswered, q)
+                }
+            }
+        }
+        
+        return(unanswered)
+    }
+
 
     # Determine which page is next, then update current_page_id() to it
     shiny::observe({
         lapply(pages, function(page) {
             shiny::observeEvent(input[[page$next_button_id]], {
+                
+                
                 shiny::isolate({
                     # Grab the time stamp of the page turn
                     timestamp <- get_utc_timestamp()
 
                     # Figure out page ids
-                    current_page_id <- page$id
+                    current_page_id_val <- page$id
                     next_page_id <- get_default_next_page(
                         page, page_ids, page_id_to_index
                     )
                     next_page_id <- handle_skip_logic(
                         input, skip_forward,
-                        current_page_id, next_page_id,
+                        current_page_id_val, next_page_id,
                         page_id_to_index
                     )
+                    
+                    # Handle page conditions - check if target page should be shown
+                    if (!is.null(next_page_id) && length(page_conditions) > 0) {
+                        # First check if the target page (from skip_forward or default) should be shown
+                        if (!should_show_page(next_page_id, page_conditions, session)) {
+                            # If target page shouldn't be shown, find next eligible page from that point
+                            eligible_page <- find_next_eligible_page_from_target(
+                                next_page_id, 
+                                page_ids, 
+                                page_conditions, 
+                                session
+                            )
+                            
+                            if (!is.null(eligible_page)) {
+                                next_page_id <- eligible_page
+                            }
+                        }
+                    }
+                    
+                    # Save current data before validation
+                    update_data()
+                    
                     if (!is.null(next_page_id) && check_required(page)) {
+                        # Clear any existing highlights before navigating
+                        session$sendCustomMessage("clearRequiredHighlights", list())
+                        
                         # Set the current page as the next page
                         current_page_id(next_page_id)
 
@@ -545,9 +782,23 @@ sd_server <- function(
                         # Update tracker of which fields changed
                         changed_fields(c(changed_fields(), next_ts_id, "current_page"))
 
-                        # Update checkpoint 2 - upon going to the next page
+                        # Save navigation data to database
                         update_data()
                     } else if (!is.null(next_page_id)) {
+                        # Get list of unanswered required questions
+                        unanswered_questions <- get_unanswered_required(page)
+                        
+                        # Always send as character vector, even if empty
+                        # This ensures consistent JSON formatting
+                        if (length(unanswered_questions) == 0) {
+                            unanswered_questions <- character(0)
+                        }
+                        
+                        # Send list to JavaScript for highlighting
+                        session$sendCustomMessage("highlightRequiredQuestions", 
+                                                  list(questions = unanswered_questions))
+                        
+                        # Show warning alert
                         shinyWidgets::sendSweetAlert(
                             session = session,
                             title = translations[["warning"]],
@@ -564,7 +815,20 @@ sd_server <- function(
     shiny::observe({
         page <- get_current_page()
         if (is.null(page$next_page_id)) {
-            update_progress_bar(length(question_ids))
+            # Check if there are questions on this page
+            page_questions <- page$questions
+            if (is.null(page_questions) || length(page_questions) == 0) {
+                # No questions on this page, set progress to 100%
+                update_progress_bar(length(question_ids))
+            } else {
+                # There are questions on this page, check if all questions are answered
+                # Use the same logic as get_unanswered_all to ensure consistency
+                unanswered <- get_unanswered_all(page)
+                if (length(unanswered) == 0) {
+                    # All questions are answered, set progress to 100%
+                    update_progress_bar(length(question_ids))
+                }
+            }
         }
     })
 
@@ -572,35 +836,70 @@ sd_server <- function(
 
     # Observer for the exit survey modal
     shiny::observeEvent(input$show_exit_modal, {
-        if (rate_survey) {
-            shiny::showModal(shiny::modalDialog(
-                title = translations[["rating_title"]],
-                sd_question(
-                    type   = 'mc_buttons',
-                    id     = 'survey_rating',
-                    label  = glue::glue("{translations[['rating_text']]}:<br><small>({translations[['rating_scale']]})</small>"),
-                    option = c(
-                        "1" = "1",
-                        "2" = "2",
-                        "3" = "3",
-                        "4" = "4",
-                        "5" = "5"
+        # Get current page for required question validation
+        page <- get_current_page()
+        
+        # Save current data before validation
+        update_data()
+        
+        # Check required questions before allowing exit
+        if (check_required(page)) {
+            # Clear any existing highlights before proceeding
+            session$sendCustomMessage("clearRequiredHighlights", list())
+            
+            # Proceed with exit modal
+            if (rate_survey) {
+                shiny::showModal(shiny::modalDialog(
+                    title = translations[["rating_title"]],
+                    sd_question(
+                        type   = 'mc_buttons',
+                        id     = 'survey_rating',
+                        label  = glue::glue("{translations[['rating_text']]}:<br><small>({translations[['rating_scale']]})</small>"),
+                        option = c(
+                            "1" = "1",
+                            "2" = "2",
+                            "3" = "3",
+                            "4" = "4",
+                            "5" = "5"
+                        )
+                    ),
+                    footer = shiny::tagList(
+                        shiny::modalButton(translations[["cancel"]]),
+                        shiny::actionButton("submit_rating", translations[["submit_exit"]])
                     )
-                ),
-                footer = shiny::tagList(
-                    shiny::modalButton(translations[["cancel"]]),
-                    shiny::actionButton("submit_rating", translations[["submit_exit"]])
-                )
-            ))
+                ))
+            } else {
+                shiny::showModal(shiny::modalDialog(
+                    title = translations[["confirm_exit"]],
+                    translations[["sure_exit"]],
+                    footer = shiny::tagList(
+                        shiny::modalButton(translations[["cancel"]]),
+                        shiny::actionButton("confirm_exit", translations[["exit"]])
+                    )
+                ))
+            }
         } else {
-            shiny::showModal(shiny::modalDialog(
-                title = translations[["confirm_exit"]],
-                translations[["sure_exit"]],
-                footer = shiny::tagList(
-                    shiny::modalButton(translations[["cancel"]]),
-                    shiny::actionButton("confirm_exit", translations[["exit"]])
-                )
-            ))
+            # Required questions validation failed - same logic as Next button
+            # Get list of unanswered required questions
+            unanswered_questions <- get_unanswered_required(page)
+            
+            # Always send as character vector, even if empty
+            # This ensures consistent JSON formatting
+            if (length(unanswered_questions) == 0) {
+                unanswered_questions <- character(0)
+            }
+            
+            # Send list to JavaScript for highlighting
+            session$sendCustomMessage("highlightRequiredQuestions", 
+                                      list(questions = unanswered_questions))
+            
+            # Show warning alert
+            shinyWidgets::sendSweetAlert(
+                session = session,
+                title = translations[["warning"]],
+                text = translations[["required"]],
+                type = "warning"
+            )
         }
     })
 
@@ -752,18 +1051,18 @@ sd_skip_if <- function(...) {
     sd_skip_forward(...)
 }
 
-#' Define show conditions for survey questions
+#' Define show conditions for survey questions and pages
 #'
 #' @description
-#' This function is used to define conditions under which certain questions in the survey should be shown.
-#' It takes one or more formulas where the left-hand side is the condition and the right-hand side is the target question ID.
+#' This function is used to define conditions under which certain questions or pages in the survey should be shown.
+#' It takes one or more formulas where the left-hand side is the condition and the right-hand side is the target question ID or page ID.
 #' If called with no arguments, it will return `NULL` and set no conditions.
 #'
 #' @param ... One or more formulas defining show conditions.
 #'   The left-hand side of each formula should be a condition based on input values,
-#'   and the right-hand side should be the ID of the question to show if the condition is met.
+#'   and the right-hand side should be the ID of the question or page to show if the condition is met.
 #'
-#' @return A list of parsed conditions, where each element contains the condition and the target question ID.
+#' @return A list of parsed conditions, where each element contains the condition and the target question or page ID.
 #'   Returns `NULL` if no conditions are provided.
 #'
 #' @examples
@@ -785,7 +1084,9 @@ sd_skip_if <- function(...) {
 #'
 #'     sd_show_if(
 #'       # If "Other" is chosen, show the conditional question
-#'       input$fav_fruit == "other" ~ "fav_fruit_other"
+#'       input$fav_fruit == "other" ~ "fav_fruit_other",
+#'       # If condition is met, show specific page
+#'       input$category == "advanced" ~ "advanced_page"
 #'     )
 #'
 #'     sd_server()
@@ -1242,6 +1543,100 @@ sd_is_answered <- function(question_id) {
 
 # Helper functions ----
 
+# Helper function to find the next eligible page starting from a specific target
+find_next_eligible_page_from_target <- function(target_page_id, page_ids, page_conditions, session) {
+    target_index <- which(page_ids == target_page_id)
+    
+    if (length(target_index) == 0) {
+        return(NULL)  # Target page not found
+    }
+    
+    # Look for the next eligible page starting from the target
+    for (i in target_index:length(page_ids)) {
+        candidate_page <- page_ids[i]
+        if (should_show_page(candidate_page, page_conditions, session)) {
+            return(candidate_page)
+        }
+    }
+    
+    return(NULL)  # No eligible page found
+}
+
+# Helper function to separate page and question conditions
+separate_show_if_conditions <- function(show_if_conditions, page_ids, question_ids) {
+    if (is.null(show_if_conditions) || length(show_if_conditions) == 0) {
+        return(list(page_conditions = list(), question_conditions = list()))
+    }
+    
+    page_conditions <- list()
+    question_conditions <- list()
+    
+    for (condition in show_if_conditions) {
+        target <- condition$target
+        if (target %in% page_ids) {
+            page_conditions <- c(page_conditions, list(condition))
+        } else if (target %in% question_ids) {
+            question_conditions <- c(question_conditions, list(condition))
+        } else {
+            warning(sprintf("Target '%s' is neither a page nor a question ID", target))
+        }
+    }
+    
+    return(list(page_conditions = page_conditions, question_conditions = question_conditions))
+}
+
+# Helper function to evaluate if a page should be shown based on conditions
+should_show_page <- function(page_id, page_conditions, session) {
+    if (length(page_conditions) == 0) {
+        return(TRUE)  # No conditions, always show
+    }
+    
+    # Check if this page has any conditions
+    page_condition <- NULL
+    for (condition in page_conditions) {
+        if (condition$target == page_id) {
+            page_condition <- condition
+            break
+        }
+    }
+    
+    # If no condition for this page, show it
+    if (is.null(page_condition)) {
+        return(TRUE)
+    }
+    
+    # Evaluate the condition
+    tryCatch({
+        result <- eval(page_condition$original_condition, envir = page_condition$calling_env)
+        return(isTRUE(result))
+    }, error = function(e) {
+        warning("Error evaluating page condition for ", page_id, ": ", e$message)
+        return(TRUE)  # Default to showing the page if evaluation fails
+    })
+}
+
+# Helper function to find the next eligible page to show
+find_next_eligible_page <- function(current_page_id, config, page_conditions, session) {
+    page_ids <- config$page_ids
+    current_index <- which(page_ids == current_page_id)
+    
+    if (length(current_index) == 0) {
+        return(NULL)  # Current page not found
+    }
+    
+    # Look for the next eligible page
+    for (i in (current_index + 1):length(page_ids)) {
+        if (i > length(page_ids)) break
+        
+        candidate_page <- page_ids[i]
+        if (should_show_page(candidate_page, page_conditions, session)) {
+            return(candidate_page)
+        }
+    }
+    
+    return(NULL)  # No eligible next page found
+}
+
 set_show_if_conditions <- function(show_if) {
     if (is.null(show_if) || length(show_if$conditions) == 0) {
         return(shiny::reactive(list()))
@@ -1413,14 +1808,132 @@ handle_skip_logic <- function(
 }
 
 # Check if a single question is answered
-check_answer <- function(q, input) {
+check_answer <- function(q, input, question_structure = NULL) {
     answer <- input[[q]]
     if (is.null(answer)) return(FALSE)
-    if (is.character(answer)) return(any(nzchar(answer)))
-    if (is.numeric(answer)) return(any(!is.na(answer)))
-    if (inherits(answer, "Date")) return(any(!is.na(answer)))
-    if (is.list(answer)) return(any(!sapply(answer, is.null)))
+    
+    # For question types that have default values, check if user has actually interacted
+    # These types often have default values that shouldn't count as "answered"
+    interacted <- input[[paste0(q, "_interacted")]]
+    
+    # Also check for auto-save timestamp (indicates auto-save occurred)
+    autosave_timestamp <- input[[paste0(q, "_autosave_timestamp")]]
+    if (is.null(interacted) && !is.null(autosave_timestamp)) {
+        interacted <- TRUE
+    }
+    
+    # Smart auto-save detection: ONLY apply if normal validation would fail
+    # This ensures we don't interfere with normal user interaction tracking
+    if (is.null(interacted) && !is.null(answer)) {
+        # Get question type from question_structure if available
+        if (!is.null(question_structure) && q %in% names(question_structure)) {
+            q_type_raw <- question_structure[[q]]$type
+            
+            # Map raw HTML classes to proper question types (same as in write_question_structure_yaml)
+            type_replacement <- c(
+                'shiny-input-text form-control' = 'text',
+                'shiny-input-textarea form-control' = 'textarea',
+                'shiny-input-number form-control' = 'numeric',
+                'form-group shiny-input-radiogroup shiny-input-container' = 'mc',
+                'radio-group-buttons' = 'mc_buttons',
+                'form-group shiny-input-checkboxgroup shiny-input-container' = 'mc_multiple',
+                'checkbox-group-buttons' = 'mc_multiple_buttons',
+                'shiny-input-select' = 'select',
+                'js-range-slider sw-slider-text' = 'slider',
+                'js-range-slider' = 'slider_numeric',
+                'shiny-date-input form-group shiny-input-container' = 'date',
+                'shiny-date-range-input form-group shiny-input-container' = 'daterange'
+            )
+            
+            # Map the raw type to the proper type
+            q_type <- type_replacement[q_type_raw]
+            if (is.na(q_type)) q_type <- q_type_raw  # Fallback to raw if no mapping
+            
+            # ONLY apply smart detection for auto-save supported types
+            # and ONLY when there's no interaction (meaning this is default value scenario)
+            if (!is.null(q_type) && q_type %in% c("slider", "slider_numeric", "date", "daterange")) {
+                interacted <- TRUE
+            }
+        }
+    }
+    
+    # Get question type from question_structure if available
+    q_type <- NULL
+    if (!is.null(question_structure) && q %in% names(question_structure)) {
+        q_type <- question_structure[[q]]$type
+    }
+    
+    # Handle based on question type if available
+    if (!is.null(q_type)) {
+        # Check if this is a slider type (could be "slider", "slider_numeric", or contain slider-related classes)
+        is_slider <- grepl("slider", q_type, ignore.case = TRUE) || 
+                    q_type %in% c("slider", "slider_numeric")
+        
+        if (is_slider) {
+            # Sliders always have defaults, require interaction tracking
+            if (!is.null(interacted)) {
+                return(isTRUE(interacted))
+            } else {
+                return(FALSE)
+            }
+        }
+    }
+    
+    if (is.character(answer)) {
+        # For text/textarea inputs, require both interaction AND non-empty content
+        if (!is.null(interacted) && isTRUE(interacted)) {
+            return(any(nzchar(answer)))
+        } else {
+            return(any(nzchar(answer)))
+        }
+    } else if (is.numeric(answer) || is.logical(answer)) {
+        # For numeric text inputs (sliders are already handled above), require both interaction AND valid content
+        if (!is.null(interacted) && isTRUE(interacted)) {
+            # User interacted - check if they provided actual content
+            if (is.logical(answer) || all(is.na(answer))) {
+                return(FALSE)  # No valid content provided
+            }
+            return(TRUE)  # Valid content provided
+        } else {
+            # Without interaction tracking, check for valid content
+            if (is.logical(answer) || all(is.na(answer))) {
+                return(FALSE)
+            }
+            return(TRUE)
+        }
+    } else if (inherits(answer, "Date")) {
+        # For date inputs, require user interaction if available
+        if (!is.null(interacted)) {
+            return(isTRUE(interacted))
+        } else {
+            # Fallback: check if date is not NA and not today's date (common default)
+            return(any(!is.na(answer)) && !all(answer == Sys.Date()))
+        }
+    } else if (is.list(answer)) {
+        # For date ranges and other list inputs
+        if (!is.null(interacted)) {
+            return(isTRUE(interacted))
+        } else {
+            return(any(!sapply(answer, is.null)))
+        }
+    }
+    
     return(TRUE)  # Default to true for unknown types
+}
+
+# Check if a question should be highlighted (based on interaction only, no smart detection)
+check_answer_for_highlighting <- function(q, input, question_structure = NULL) {
+    # For highlighting purposes, only check actual user interaction
+    # Do NOT use smart detection - we want to show gray for untouched questions
+    interacted <- input[[paste0(q, "_interacted")]]
+    
+    # If user has explicitly interacted, don't highlight
+    if (!is.null(interacted) && isTRUE(interacted)) {
+        return(TRUE)  # Interacted = answered for highlighting purposes
+    }
+    
+    # For all question types, if no interaction flag, show as unanswered for highlighting
+    return(FALSE)
 }
 
 get_local_data <- function() {

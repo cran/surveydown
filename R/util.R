@@ -184,8 +184,6 @@ tibble_to_list_of_lists <- function(tbl) {
 #' including the default built-in template and specialized templates from the
 #' surveydown-dev/templates repository.
 #'
-#' @param path A character string specifying the directory where the survey
-#'   template should be created. Defaults to the current working directory.
 #' @param template A character string specifying the template to use.
 #'   Default is "default" which uses the built-in package template.
 #'   Other options include:
@@ -206,6 +204,11 @@ tibble_to_list_of_lists <- function(tbl) {
 #'     \item{reactive_drilldown}{Dynamic questions with drill-down capability}
 #'     \item{reactive_questions}{Survey with reactive questions}
 #'   }
+#' @param path A character string specifying the directory where the survey
+#'   template should be created. Defaults to the current working directory.
+#' @param ask Logical. If `TRUE` (default), prompts for user confirmation
+#'   when creating the survey in the current directory. If `FALSE`, bypasses
+#'   the confirmation prompt and proceeds without asking.
 #'
 #' @details
 #' When creating a new survey template, this function will:
@@ -222,18 +225,21 @@ tibble_to_list_of_lists <- function(tbl) {
 #'
 #' @examples
 #' if (interactive()) {
-#'   # Create a survey using the default template
+#'   # Create a survey with the "question_types" template in the "my_survey" directory
+#'   sd_create_survey(template = "question_types", path = "my_survey")
+#' 
+#'   # Create a survey using the default template in the "my_survey" directory
 #'   sd_create_survey(path = "my_survey")
 #'
-#'   # Create a survey with the question_types template
-#'   sd_create_survey(path = "question_demo", template = "question_types")
+#'   # Create a survey with default template in current directory
+#'   sd_create_survey("default")
 #'
-#'   # Create a conditional display survey template
-#'   sd_create_survey(path = "conditional_survey", template = "conditional_display")
+#'   # Create a survey without asking for confirmation
+#'   sd_create_survey(template = "default", path = "my_survey", ask = FALSE)
 #' }
 #'
 #' @export
-sd_create_survey <- function(path = getwd(), template = "default") {
+sd_create_survey <- function(template = "default", path = getwd(), ask = TRUE) {
   # Available templates from surveydown-dev/templates
   available_templates <- c(
     "default",
@@ -259,7 +265,7 @@ sd_create_survey <- function(path = getwd(), template = "default") {
          paste(available_templates, collapse = ", "))
   }
 
-  if (path == getwd() && !yesno(paste0('Use the current directory "', path, '" as the path?'))) {
+  if (ask && path == getwd() && !yesno(paste0('Use the current directory "', path, '" as the path?'))) {
     stop("Operation aborted by the user.")
   }
 
@@ -778,7 +784,7 @@ sd_close()
 
 '
   } else {
-    template <- sprintf('::: {.sd-page id=%s}
+    template <- sprintf('::: {.sd_page id=%s}
 
 Add page contents...
 
@@ -1035,6 +1041,45 @@ sd_create_translations <- function(language = "en", path = getwd()) {
     "\n\nModify it to provide custom messages in '", language, "'."
   )
   invisible(NULL)
+}
+
+# Helper function to check if error is GSSAPI-related
+is_gssapi_error <- function(error_msg) {
+  grepl("invalid response to GSSAPI negotiation", error_msg, ignore.case = TRUE)
+}
+
+# Helper function to try database connection with specific gssencmode
+try_db_connection <- function(params, gss_mode) {
+  # Build connection arguments
+  conn_args <- list(
+    drv = RPostgres::Postgres(),
+    host = params$host,
+    dbname = params$dbname,
+    port = params$port,
+    user = params$user,
+    password = params$password
+  )
+
+  # Add gssencmode unless it's explicitly set to NULL
+  if (!is.null(gss_mode)) {
+    if (!gss_mode %in% c("auto", "prefer", "disable")) {
+      cli::cli_alert_warning(
+        "Invalid 'gssencmode' setting. Must be set to 'auto', 'prefer', 'disable', or NULL...setting to 'auto'"
+      )
+      conn_args$gssencmode <- "prefer"  # Use prefer for auto mode
+    } else if (gss_mode == "auto") {
+      conn_args$gssencmode <- "prefer"  # Auto mode starts with prefer
+    } else {
+      conn_args$gssencmode <- gss_mode
+    }
+  } else {
+    cli::cli_alert_warning(
+      "'gssencmode' is set to NULL, so the 'gssencmode' parameter will not be passed to the database connection."
+    )
+  }
+
+  # Create pool with dynamic arguments
+  do.call(pool::dbPool, conn_args)
 }
 
 # Replaces usethis::ui_yeah, inspired by internal yesno function in devtools

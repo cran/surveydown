@@ -1,5 +1,44 @@
 # surveydown (development version)
 
+# surveydown 0.12.6
+
+- UI update: Now `"matrix"` question type has better layout.
+- Bug fix: `"text"`, `"textarea"` and `"numeric"` types could bypass the "required" question check with mouse clicking on their areas. Now it's fixed.
+
+# surveydown 0.12.5
+
+- New argument: `gssencmode` now has values of `"auto"`, `"prefer"`, and `"disable"`, with `"auto"` being default.
+- New feature: Now re-rendering will be triggered by changing of either the `survey.qmd` or `app.R` file.
+- Bug fix: `slider`, `slider_numeric`, `date`, and `daterage` questions now will be marked as answered without user interaction if the Next/Close button is pushed, and will have their default value saved.
+- Bug fix: `mc_buttons` and `mc_multiple_buttons` now can properly save data.
+
+# surveydown 0.12.4
+
+- In `sd_question()`, `"numeric"` question type will only allow numeric inputs and `+`/`-` signs.
+- Progress bar won't force to 100% if the ending page has questions. It is useful for those one-page surveys without any Next button or even finish button. In our previous versions, this case will force the bar to 100% even with unanswered questions.
+
+# surveydown 0.12.3
+
+- New argument for `sd_server()`: `highlight_unanswered` gives color shading for the unanswered questions, default to `TRUE`, can be turned off by changing to `FALSE`.
+- New argument for `sd_server()`: `highlight_color` changes the shading color, default to `"gray"` (or `"grey"` as an acceptable spelling), can be changed to `"blue"`, `"orange"`, `"green"`, or `"purple"`.
+
+# surveydown 0.12.2
+
+- `sd_create_survey()` now accepts a new `ask` argument, defaults to `TRUE`. If `ask = FALSE`, the survey creation will proceed without asking.
+
+# surveydown 0.12.1
+
+- Bug fix: In the `0.11.1` version, `sd_show_if()` works for pages as well, but it will make `sd_skip_forward()` totally ignored. Now this is fixed.
+
+# surveydown 0.12.0
+
+- Required question highlighting: Now upon clicking the "Next" button, the unanswered required questions will be highlighted.
+
+# surveydown 0.11.1
+
+- `sd_create_survey()` now accepts `template` as the first argument, and `path` as the second. This follows intuition that we firstly choose a template, and then define the location.
+- `sd_show_if()` now works for both questions and pages with the same syntax. Therefore, we also added an ID check for the uniqueness of the `page_id` and `question_id` altogether. If there is a duplicated ID, the survey will stop and show an error.
+
 # surveydown 0.11.0
 
 - Questions can now be defined using an external yml file, defaulting to `"questions.yml"`.
