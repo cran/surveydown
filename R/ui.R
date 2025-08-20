@@ -52,6 +52,7 @@ sd_ui <- function() {
 
   # Get metadata from the 'survey.qmd' file
   metadata <- quarto::quarto_inspect("survey.qmd")
+
   theme <- get_theme(metadata)
   default_theme <- FALSE
   if (any(theme == "default")) {
@@ -76,11 +77,13 @@ sd_ui <- function() {
     html_content <- rvest::read_html(paths$target_html)
     head_content <- extract_head_content(html_content)
     saveRDS(head_content, paths$target_head)
-
   } else {
     # If no changes, just load head content from '_survey/head.rds'
     head_content <- readRDS(paths$target_head)
   }
+
+  # Create settings YAML file from survey.qmd YAML metadata
+  create_settings_yaml(paths, metadata)
 
   # Create the UI
   shiny::tagList(
@@ -94,11 +97,14 @@ sd_ui <- function() {
       shinyjs::useShinyjs(),
       shiny::tags$script("var surveydownConfig = {};"),
       if (!is.null(barcolor)) {
-        shiny::tags$style(htmltools::HTML(sprintf("
+        shiny::tags$style(htmltools::HTML(sprintf(
+          "
             :root {
                 --progress-color: %s;
             }
-          ", barcolor)))
+          ",
+          barcolor
+        )))
       },
       if (barposition != "none") {
         shiny::tags$div(
@@ -149,12 +155,12 @@ get_barposition <- function(metadata) {
 }
 
 process_links <- function(text) {
-  if (is.null(text)) return("")
+  if (is.null(text)) {
+    return("")
+  }
 
   # Convert markdown links to HTML first
-  text <- gsub("\\[([^]]+)\\]\\(([^)]+)\\)",
-               '<a href="\\2">\\1</a>',
-               text)
+  text <- gsub("\\[([^]]+)\\]\\(([^)]+)\\)", '<a href="\\2">\\1</a>', text)
 
   # Then add target="_blank" to any HTML links that don't have it
   pattern <- '<a [^>]*?href="[^"]*?"[^>]*?>'
@@ -179,10 +185,10 @@ get_footer <- function(metadata) {
     return("")
   }
 
-  # Get footer-related fields
-  footer_left <- meta$`footer-left`
-  footer_right <- meta$`footer-right`
-  footer_center <- meta$`footer-center`
+  # Get footer-related fields with both underscore and dash support
+  footer_left <- get_yaml_value(metadata, "footer_left")
+  footer_right <- get_yaml_value(metadata, "footer_right")
+  footer_center <- get_yaml_value(metadata, "footer_center")
   plain_footer <- meta$footer
 
   # If footer-center doesn't exist but plain footer does, use plain footer
@@ -199,33 +205,184 @@ get_footer <- function(metadata) {
   footer_html <- c()
 
   if (!is.null(footer_left) && nchar(footer_left) > 0) {
-    footer_html <- c(footer_html,
-                     sprintf('<div class="footer-left">%s</div>',
-                             process_links(footer_left)))
+    footer_html <- c(
+      footer_html,
+      sprintf('<div class="footer-left">%s</div>', process_links(footer_left))
+    )
   }
 
   if (!is.null(footer_center) && nchar(footer_center) > 0) {
-    footer_html <- c(footer_html,
-                     sprintf('<div class="footer-center">%s</div>',
-                             process_links(footer_center)))
+    footer_html <- c(
+      footer_html,
+      sprintf(
+        '<div class="footer-center">%s</div>',
+        process_links(footer_center)
+      )
+    )
   }
 
   if (!is.null(footer_right) && nchar(footer_right) > 0) {
-    footer_html <- c(footer_html,
-                     sprintf('<div class="footer-right">%s</div>',
-                             process_links(footer_right)))
+    footer_html <- c(
+      footer_html,
+      sprintf('<div class="footer-right">%s</div>', process_links(footer_right))
+    )
   }
 
   # Return the final HTML
-  return(paste0('<div class="footer-content">',
-                paste(footer_html, collapse = ""),
-                '</div>'))
+  return(paste0(
+    '<div class="footer-content">',
+    paste(footer_html, collapse = ""),
+    '</div>'
+  ))
+}
+
+# Helper function to get YAML values supporting both underscore and dash formats
+get_yaml_value <- function(metadata, key) {
+  yaml_data <- metadata$formats$html$metadata
+  # Try underscore version first
+  if (!is.null(yaml_data[[key]])) {
+    return(yaml_data[[key]])
+  }
+  # Try dash version
+  dash_key <- gsub("_", "-", key)
+  if (!is.null(yaml_data[[dash_key]])) {
+    return(yaml_data[[dash_key]])
+  }
+  return(NULL)
+}
+
+get_use_cookies <- function(metadata) {
+  use_cookies <- get_yaml_value(metadata, "use_cookies")
+  if (is.null(use_cookies)) {
+    return(NULL)
+  }
+  # Handle both TRUE/FALSE and yes/no formats
+  if (is.character(use_cookies)) {
+    return(use_cookies %in% c("TRUE", "True", "true", "yes", "Yes", "YES"))
+  }
+  return(as.logical(use_cookies))
+}
+
+get_auto_scroll <- function(metadata) {
+  auto_scroll <- get_yaml_value(metadata, "auto_scroll")
+  if (is.null(auto_scroll)) {
+    return(NULL)
+  }
+  # Handle both TRUE/FALSE and yes/no formats
+  if (is.character(auto_scroll)) {
+    return(auto_scroll %in% c("TRUE", "True", "true", "yes", "Yes", "YES"))
+  }
+  return(as.logical(auto_scroll))
+}
+
+get_rate_survey <- function(metadata) {
+  rate_survey <- get_yaml_value(metadata, "rate_survey")
+  if (is.null(rate_survey)) {
+    return(NULL)
+  }
+  # Handle both TRUE/FALSE and yes/no formats
+  if (is.character(rate_survey)) {
+    return(rate_survey %in% c("TRUE", "True", "true", "yes", "Yes", "YES"))
+  }
+  return(as.logical(rate_survey))
+}
+
+get_all_questions_required <- function(metadata) {
+  all_questions_required <- get_yaml_value(metadata, "all_questions_required")
+  if (is.null(all_questions_required)) {
+    return(NULL)
+  }
+  # Handle both TRUE/FALSE and yes/no formats
+  if (is.character(all_questions_required)) {
+    return(
+      all_questions_required %in% c("TRUE", "True", "true", "yes", "Yes", "YES")
+    )
+  }
+  return(as.logical(all_questions_required))
+}
+
+get_start_page <- function(metadata) {
+  start_page <- get_yaml_value(metadata, "start_page")
+  if (is.null(start_page)) {
+    return(NULL)
+  }
+  return(as.character(start_page))
+}
+
+get_system_language <- function(metadata) {
+  system_language <- get_yaml_value(metadata, "system_language")
+  if (is.null(system_language)) {
+    return(NULL)
+  }
+  return(as.character(system_language))
+}
+
+get_language <- function(metadata) {
+  language <- metadata$formats$html$metadata$language
+  if (is.null(language)) {
+    return(NULL)
+  }
+  return(as.character(language))
+}
+
+get_highlight_unanswered <- function(metadata) {
+  highlight_unanswered <- get_yaml_value(metadata, "highlight_unanswered")
+  if (is.null(highlight_unanswered)) {
+    return(NULL)
+  }
+  # Handle both TRUE/FALSE and yes/no formats
+  if (is.character(highlight_unanswered)) {
+    return(
+      highlight_unanswered %in% c("TRUE", "True", "true", "yes", "Yes", "YES")
+    )
+  }
+  return(as.logical(highlight_unanswered))
+}
+
+get_highlight_color <- function(metadata) {
+  highlight_color <- get_yaml_value(metadata, "highlight_color")
+  if (is.null(highlight_color)) {
+    return(NULL)
+  }
+  return(as.character(highlight_color))
+}
+
+get_capture_metadata <- function(metadata) {
+  capture_metadata <- get_yaml_value(metadata, "capture_metadata")
+  if (is.null(capture_metadata)) {
+    return(NULL)
+  }
+  # Handle both TRUE/FALSE and yes/no formats
+  if (is.character(capture_metadata)) {
+    return(capture_metadata %in% c("TRUE", "True", "true", "yes", "Yes", "YES"))
+  }
+  return(as.logical(capture_metadata))
+}
+
+get_required_questions <- function(metadata) {
+  required_questions <- get_yaml_value(metadata, "required_questions")
+  if (is.null(required_questions)) {
+    return(NULL)
+  }
+  # Handle both single string and list/vector of strings
+  if (is.character(required_questions)) {
+    return(required_questions)
+  } else if (is.list(required_questions)) {
+    # Convert list to character vector
+    return(unlist(required_questions))
+  } else {
+    return(as.character(required_questions))
+  }
 }
 
 find_all_yaml_files <- function() {
   # Find all yml files
-  all_files <- list.files(path = ".", pattern = "\\.(yml|yaml)$",
-                          recursive = TRUE, full.names = TRUE)
+  all_files <- list.files(
+    path = ".",
+    pattern = "\\.(yml|yaml)$",
+    recursive = TRUE,
+    full.names = TRUE
+  )
 
   # Exclude the _survey/ directory
   yaml_files <- all_files[!grepl("^\\./?\\_survey/", all_files)]
@@ -236,18 +393,16 @@ find_all_yaml_files <- function() {
 survey_needs_updating <- function(paths) {
   # Re-render if any of the target files are missing
   targets <- c(paths$target_html, paths$target_head)
-  if (any(!fs::file_exists(targets))) { return(TRUE) }
+  if (any(!fs::file_exists(targets))) {
+    return(TRUE)
+  }
 
   # Re-render if '_survey/survey.html' is out of date with 'survey.qmd'
   time_qmd <- file.info(paths$qmd)$mtime
   time_html <- file.info(paths$target_html)$mtime
 
-  if (time_qmd > time_html) { return(TRUE) }
-
-  # Re-render if '_survey/survey.html' is out of date with 'app.R'
-  if (fs::file_exists(paths$app)) {
-    time_app <- file.info(paths$app)$mtime
-    if (time_app > time_html) { return(TRUE) }
+  if (time_qmd > time_html) {
+    return(TRUE)
   }
 
   # Find all YAML files
@@ -267,32 +422,32 @@ survey_needs_updating <- function(paths) {
 }
 
 render_survey_qmd <- function(paths, default_theme = TRUE) {
-    # Copy lua filter to local folder
-    lua_file <- 'surveydown.lua'
-    fs::file_copy(
-        system.file("lua/include-resources.lua", package = "surveydown"),
-        lua_file,
-        overwrite = TRUE
-    )
+  # Copy lua filter to local folder
+  lua_file <- 'surveydown.lua'
+  fs::file_copy(
+    system.file("lua/include-resources.lua", package = "surveydown"),
+    lua_file,
+    overwrite = TRUE
+  )
 
-    # Render the survey.qmd file
-    quarto::quarto_render(
-        input = paths$qmd,
-        metadata = list(
-            default_theme = default_theme
-        ),
-        pandoc_args = c(
-            "--embed-resources",
-            "--lua-filter=surveydown.lua"
-        ),
-        # Turn off quiet mode to capture output
-        quiet = FALSE
-    )
+  # Render the survey.qmd file
+  quarto::quarto_render(
+    input = paths$qmd,
+    metadata = list(
+      default_theme = default_theme
+    ),
+    pandoc_args = c(
+      "--embed-resources",
+      "--lua-filter=surveydown.lua"
+    ),
+    # Turn off quiet mode to capture output
+    quiet = FALSE
+  )
 
-    # Delete lua file from root folder
-    if (file.exists(lua_file)) {
-        fs::file_delete(lua_file)
-    }
+  # Delete lua file from root folder
+  if (file.exists(lua_file)) {
+    fs::file_delete(lua_file)
+  }
 }
 
 extract_head_content <- function(html_content) {
@@ -407,44 +562,61 @@ extract_head_content <- function(html_content) {
 #'
 #' @export
 sd_question <- function(
-    id,
-    type         = NULL,
-    label        = NULL,
-    option       = NULL,
-    cols         = "80",
-    direction    = "horizontal",
-    status       = "default",
-    width        = "100%",
-    height       = NULL,
-    selected     = NULL,
-    label_select = "Choose an option...",
-    grid         = TRUE,
-    individual   = TRUE,
-    justified    = FALSE,
-    force_edges  = TRUE,
-    placeholder  = NULL,
-    resize       = NULL,
-    row          = NULL,
-    default      = NULL,
-    yml          = "questions.yml",
-    ...
-    ) {
-
+  id,
+  type = NULL,
+  label = NULL,
+  option = NULL,
+  cols = "80",
+  direction = "horizontal",
+  status = "default",
+  width = "100%",
+  height = NULL,
+  selected = NULL,
+  label_select = "Choose an option...",
+  grid = TRUE,
+  individual = TRUE,
+  justified = FALSE,
+  force_edges = TRUE,
+  placeholder = NULL,
+  resize = NULL,
+  row = NULL,
+  default = NULL,
+  yml = "questions.yml",
+  ...
+) {
   # Define valid question types
   valid_types <- c(
-    "select", "mc", "mc_multiple", "mc_buttons", "mc_multiple_buttons",
-    "text", "textarea", "numeric", "slider", "slider_numeric", "date",
-    "daterange", "matrix"
+    "select",
+    "mc",
+    "mc_multiple",
+    "mc_buttons",
+    "mc_multiple_buttons",
+    "text",
+    "textarea",
+    "numeric",
+    "slider",
+    "slider_numeric",
+    "date",
+    "daterange",
+    "matrix"
   )
 
   # Define types that require options
   types_requiring_options <- c(
-    "select", "mc", "mc_multiple", "mc_buttons",
-    "mc_multiple_buttons", "slider", "slider_numeric", "matrix"
+    "select",
+    "mc",
+    "mc_multiple",
+    "mc_buttons",
+    "mc_multiple_buttons",
+    "slider",
+    "slider_numeric",
+    "matrix"
   )
 
   # First check for missing arguments and try to load from local yml file
-  missing_option <- is.null(option) && !is.null(type) && (type %in% types_requiring_options)
+  missing_option <- is.null(option) &&
+    !is.null(type) &&
+    (type %in% types_requiring_options)
   if (is.null(type) || is.null(label) || missing_option) {
     # Check if the yml file exists first
     if (!file.exists(yml)) {
@@ -452,77 +624,91 @@ sd_question <- function(
       stop("Specified yml file '", yml, "' not found for question ", id)
     }
     # Attempt to load existing yml file
-    tryCatch({
-      root_questions <- yaml::read_yaml(yml)
-      if (is.null(root_questions[[id]])) {
-        stop("Question '", id, "' not found in yml file ", yml)
-      } else {
-        q_data <- root_questions[[id]]
+    tryCatch(
+      {
+        root_questions <- yaml::read_yaml(yml)
+        if (is.null(root_questions[[id]])) {
+          stop("Question '", id, "' not found in yml file ", yml)
+        } else {
+          q_data <- root_questions[[id]]
 
-        # Only override parameters that weren't provided
-        if (is.null(type)) {
-          type <- q_data$type
-        }
+          # Only override parameters that weren't provided
+          if (is.null(type)) {
+            type <- q_data$type
+          }
 
-        if (is.null(label)) {
-          label <- q_data$label
-        }
+          if (is.null(label)) {
+            label <- q_data$label
+          }
 
-        # Handle different option formats based on question type
-        if (is.null(option) && !is.null(q_data$options)) {
-          if (is.list(q_data$options)) {
-            # Convert list to named vector for option parameter
-            option_names <- names(q_data$options)
-            option_values <- unlist(q_data$options)
-            option <- option_values
-            names(option) <- option_names
-          } else {
-            option <- q_data$options
+          # Handle different option formats based on question type
+          if (is.null(option) && !is.null(q_data$options)) {
+            if (is.list(q_data$options)) {
+              # Convert list to named vector for option parameter
+              option_names <- names(q_data$options)
+              option_values <- unlist(q_data$options)
+              option <- option_values
+              names(option) <- option_names
+            } else {
+              option <- q_data$options
+            }
+          }
+
+          # Load default value for numeric sliders
+          if (
+            is.null(default) &&
+              type == "slider_numeric" &&
+              !is.null(q_data$default)
+          ) {
+            default <- q_data$default
+          }
+
+          # Handle range slider flag
+          if (
+            type == "slider_numeric" &&
+              !is.null(q_data$is_range) &&
+              q_data$is_range
+          ) {
+            # If it's a range slider and we don't have a default value yet,
+            # create a default range using min/max from options
+            if (is.null(default) && !is.null(option)) {
+              options_numeric <- as.numeric(option)
+              min_val <- min(options_numeric)
+              max_val <- max(options_numeric)
+              # Default to 1/3 and 2/3 of the range
+              range_width <- max_val - min_val
+              default <- c(min_val + range_width / 3, max_val - range_width / 3)
+            }
+          }
+
+          # Handle row for matrix questions
+          if (is.null(row) && !is.null(q_data$row) && is.list(q_data$row)) {
+            row_names <- names(q_data$row)
+            row_values <- unlist(q_data$row)
+            row <- row_values
+            names(row) <- row_names
           }
         }
-
-        # Load default value for numeric sliders
-        if (is.null(default) && type == "slider_numeric" && !is.null(q_data$default)) {
-          default <- q_data$default
-        }
-
-        # Handle range slider flag
-        if (type == "slider_numeric" && !is.null(q_data$is_range) && q_data$is_range) {
-          # If it's a range slider and we don't have a default value yet,
-          # create a default range using min/max from options
-          if (is.null(default) && !is.null(option)) {
-            options_numeric <- as.numeric(option)
-            min_val <- min(options_numeric)
-            max_val <- max(options_numeric)
-            # Default to 1/3 and 2/3 of the range
-            range_width <- max_val - min_val
-            default <- c(min_val + range_width/3, max_val - range_width/3)
-          }
-        }
-
-        # Handle row for matrix questions
-        if (is.null(row) && !is.null(q_data$row) && is.list(q_data$row)) {
-          row_names <- names(q_data$row)
-          row_values <- unlist(q_data$row)
-          row <- row_values
-          names(row) <- row_names
-        }
+      },
+      error = function(e) {
+        stop("Error reading yml file '", yml, "': ", e$message)
       }
-    }, error = function(e) {
-      stop("Error reading yml file '", yml, "': ", e$message)
-    })
+    )
   }
 
   # Check if provided type is valid
   if (is.null(type)) {
-    stop("Question type is required but missing. Please provide a type or ensure it exists in the questions.yml file.")
+    stop(
+      "Question type is required but missing. Please provide a type or ensure it exists in the questions.yml file."
+    )
   }
 
   if (!type %in% valid_types) {
     stop(
       sprintf(
         "Invalid question type: '%s'. Valid types are: %s",
-        type, paste(sort(valid_types), collapse = "', '")
+        type,
+        paste(sort(valid_types), collapse = "', '")
       )
     )
   }
@@ -535,17 +721,21 @@ sd_question <- function(
   translations <- translations$translations
 
   # Check if question if answered
-  js_interaction <- sprintf("Shiny.setInputValue('%s_interacted', true, {priority: 'event'});", id)
+  js_interaction <- sprintf(
+    "Shiny.setInputValue('%s_interacted', true, {priority: 'event'});",
+    id
+  )
 
   # Auto-save helper function for untouched questions
   create_autosave_js <- function(question_id, question_type, params = list()) {
-    sprintf("
+    sprintf(
+      "
       $(document).ready(function() {
         var questionId = '%s';
         var questionType = '%s';
         var hasInteracted = false;
         var params = %s;
-        
+
         // Auto-save function for untouched questions
         function autoSaveQuestion() {
           // Check if user has already interacted with this question
@@ -554,12 +744,12 @@ sd_question <- function(
             // Question was already interacted with, don't auto-save
             return;
           }
-          
+
           // Double-check by looking at actual DOM changes for sliders
           if (questionType === 'slider' || questionType === 'slider_numeric_single') {
             var currentElement = $('#' + questionId);
             var initialValue = currentElement.data('initial-value');
-            
+
             // If we stored an initial value and current value differs, user interacted
             if (initialValue !== undefined) {
               var currentValue = currentElement.val();
@@ -569,9 +759,9 @@ sd_question <- function(
               }
             }
           }
-          
+
           var valueToSave = null;
-          
+
           // Handle different question types - use stored defaults, not current DOM values
           if (questionType === 'slider') {
             // Use the original default value from params, not current DOM value
@@ -589,18 +779,18 @@ sd_question <- function(
             // For date inputs, try multiple ways to get the value
             var dateElement = $('#' + questionId);
             var inputElement = dateElement.find('input[type=\"text\"]');
-            
+
             // Try different methods to get the date value
-            valueToSave = inputElement.val() || 
-                         dateElement.val() || 
-                         dateElement.attr('data-date') || 
+            valueToSave = inputElement.val() ||
+                         dateElement.val() ||
+                         dateElement.attr('data-date') ||
                          dateElement.find('input').val() || '';
           } else if (questionType === 'daterange') {
             // For date range inputs, get both start and end dates
             var container = $('#' + questionId);
             var startDate = container.find('input').eq(0).val() || '';
             var endDate = container.find('input').eq(1).val() || '';
-            
+
             // Join with comma and space to match expected format: 2025-06-17, 2025-06-18
             if (startDate && endDate) {
               valueToSave = startDate + ', ' + endDate;
@@ -610,7 +800,7 @@ sd_question <- function(
               valueToSave = '';
             }
           }
-          
+
           // Mark as interacted and save value with timestamp trigger
           Shiny.setInputValue(questionId + '_interacted', true, {priority: 'event'});
           if (valueToSave !== null && valueToSave !== '') {
@@ -618,11 +808,11 @@ sd_question <- function(
           }
           // Force timestamp update by sending a separate autosave timestamp signal
           Shiny.setInputValue(questionId + '_autosave_timestamp', Date.now(), {priority: 'event'});
-          
+
           // Clear gray highlighting since this question is now interacted
           clearQuestionHighlighting(questionId);
         }
-        
+
         // Function to clear highlighting for this specific question
         function clearQuestionHighlighting(questionId) {
           // Find question container using multiple strategies
@@ -636,7 +826,7 @@ sd_question <- function(
               questionContainer = input.closest('.question-container, .form-group, .shiny-input-container');
             }
           }
-          
+
           if (questionContainer.length > 0) {
             // Remove all highlighting classes
             questionContainer.removeClass('unanswered-question-highlight unanswered-question-highlight-orange unanswered-question-highlight-green unanswered-question-highlight-purple unanswered-question-highlight-gray required-question-highlight');
@@ -644,19 +834,19 @@ sd_question <- function(
             questionContainer.find('.form-control, input, select, textarea').removeClass('unanswered-question-highlight unanswered-question-highlight-orange unanswered-question-highlight-green unanswered-question-highlight-purple unanswered-question-highlight-gray required-question-highlight');
           }
         }
-        
+
         // Mark as interacted when user actually interacts
         window['markInteracted_' + questionId] = function() {
           hasInteracted = true;
         };
-        
+
         // Store initial values for sliders to detect changes and bind additional interaction events
         if (questionType === 'slider' || questionType === 'slider_numeric_single') {
           setTimeout(function() {
             var element = $('#' + questionId);
             if (element.length > 0) {
               element.data('initial-value', element.val());
-              
+
               // Additional interaction tracking for edge cases
               element.on('input change slide slidechange', function() {
                 hasInteracted = true;
@@ -676,19 +866,23 @@ sd_question <- function(
             }
           }, 100);
         }
-        
+
         // Listen for Next and Close button clicks
         $(document).on('click', '.sd-enter-button', function(e) {
           if ($(this).attr('onclick') && $(this).attr('onclick').includes('next_page')) {
             autoSaveQuestion();
           }
         });
-        
+
         $(document).on('click', '#close-survey-button', function(e) {
           autoSaveQuestion();
         });
       });
-    ", question_id, question_type, jsonlite::toJSON(params))
+    ",
+      question_id,
+      question_type,
+      jsonlite::toJSON(params)
+    )
   }
 
   # Create label with hidden asterisk
@@ -702,46 +896,43 @@ sd_question <- function(
     names(option)[1] <- label_select
 
     output <- shiny::selectInput(
-      inputId  = id,
-      label    = label,
-      choices  = option,
+      inputId = id,
+      label = label,
+      choices = option,
       multiple = FALSE,
       selected = FALSE,
       ...
     )
-
   } else if (type == "mc") {
-
     output <- shiny::radioButtons(
-      inputId  = id,
-      label    = label,
-      choices  = option,
+      inputId = id,
+      label = label,
+      choices = option,
       selected = FALSE,
       ...
     )
-
   } else if (type == "mc_multiple") {
-
     output <- shiny::checkboxGroupInput(
-      inputId  = id,
-      label    = label,
-      choices  = option,
+      inputId = id,
+      label = label,
+      choices = option,
       selected = FALSE,
       ...
     )
-
   } else if (type == "mc_buttons") {
-
     output <- shinyWidgets::radioGroupButtons(
-      inputId   = id,
-      label     = label,
-      choices   = list_name_md_to_html(option),
+      inputId = id,
+      label = label,
+      choices = list_name_md_to_html(option),
       direction = direction,
-      selected  = character(0),
+      selected = character(0),
       ...
     )
 
-    output <- shiny::tagAppendChild(output, shiny::tags$script(htmltools::HTML(sprintf("
+    output <- shiny::tagAppendChild(
+      output,
+      shiny::tags$script(htmltools::HTML(sprintf(
+        "
             $(document).on('click', '#%s .btn', function() {
                 %s
                 // Small delay to allow button state to update
@@ -755,22 +946,29 @@ sd_question <- function(
                     Shiny.setInputValue('%s', selectedValue, {priority: 'event'});
                 }, 50);
             });
-        ", id, js_interaction, id, id))))
-
+        ",
+        id,
+        js_interaction,
+        id,
+        id
+      )))
+    )
   } else if (type == "mc_multiple_buttons") {
-
     output <- shinyWidgets::checkboxGroupButtons(
-      inputId    = id,
-      label      = label,
-      choices    = list_name_md_to_html(option),
-      direction  = direction,
+      inputId = id,
+      label = label,
+      choices = list_name_md_to_html(option),
+      direction = direction,
       individual = individual,
-      justified  = FALSE,
-      selected   = character(0),
+      justified = FALSE,
+      selected = character(0),
       ...
     )
 
-    output <- shiny::tagAppendChild(output, shiny::tags$script(htmltools::HTML(sprintf("
+    output <- shiny::tagAppendChild(
+      output,
+      shiny::tags$script(htmltools::HTML(sprintf(
+        "
             $(document).on('click', '#%s .btn', function() {
                 %s
                 // Small delay to allow button state to update
@@ -783,63 +981,67 @@ sd_question <- function(
                     Shiny.setInputValue('%s', selectedValues, {priority: 'event'});
                 }, 50);
             });
-        ", id, js_interaction, id, id))))
+        ",
+        id,
+        js_interaction,
+        id,
+        id
+      )))
+    )
   } else if (type == "text") {
-
     output <- shiny::textInput(
-      inputId     = id,
-      label       = label,
+      inputId = id,
+      label = label,
       placeholder = option,
       ...
     )
-
   } else if (type == "textarea") {
-
     output <- shiny::textAreaInput(
-      inputId     = id,
-      label       = label,
-      height      = "100px",
-      cols        = cols,
-      value       = NULL,
-      rows        = "6",
+      inputId = id,
+      label = label,
+      height = "100px",
+      cols = cols,
+      value = NULL,
+      rows = "6",
       placeholder = placeholder,
-      resize      = resize,
+      resize = resize,
       ...
     )
-
   } else if (type == "numeric") {
-
     output <- shiny::numericInput(
       inputId = id,
-      label   = label,
-      value   = NULL,
+      label = label,
+      value = NULL,
       ...
     )
-    
+
     # Add interaction tracking and input filtering for numeric inputs
-    output <- shiny::tagAppendChild(output, shiny::tags$script(htmltools::HTML(sprintf("
+    output <- shiny::tagAppendChild(
+      output,
+      shiny::tags$script(htmltools::HTML(sprintf(
+        "
         $(document).ready(function() {
             $('#%s').on('focus input change', function() {
                 Shiny.setInputValue('%s_interacted', true, {priority: 'event'});
             });
-            
+
             // Restrict input to numeric characters (0-9) and plus/minus signs
             $('#%s').on('keypress', function(e) {
                 // Allow all key combinations with Ctrl or Cmd (for copy, paste, select all, etc.)
                 if (e.ctrlKey || e.metaKey) {
                     return true;
                 }
-                
+
                 var char = String.fromCharCode(e.which);
                 // Allow: digits (0-9), plus sign (+), minus sign (-), backspace, delete, tab, escape, enter
-                if (/[0-9+\\-]/.test(char) || 
+                if (/[0-9+\\-]/.test(char) ||
                     e.which === 8 || e.which === 46 || e.which === 9 || e.which === 27 || e.which === 13) {
                     return true;
                 }
                 e.preventDefault();
                 return false;
             });
-            
+
             // Also filter on paste events
             $('#%s').on('paste', function(e) {
                 setTimeout(function() {
@@ -852,71 +1054,82 @@ sd_question <- function(
                 }, 1);
             });
         });
-    ", id, id, id, id, id, id))))
-
+    ",
+        id,
+        id,
+        id,
+        id,
+        id,
+        id
+      )))
+    )
   } else if (type == "slider") {
+    # Extract display labels and values
+    display_labels <- names(option)
+    values <- unname(option)
 
-      # Extract display labels and values
-      display_labels <- names(option)
-      values <- unname(option)
+    # Value to display mapping (for finding the display label from a selected value)
+    value_to_label <- display_labels
+    names(value_to_label) <- values
 
-      # Value to display mapping (for finding the display label from a selected value)
-      value_to_label <- display_labels
-      names(value_to_label) <- values
+    # Create a choices vector that sliderTextInput will use
+    slider_choices <- display_labels
 
-      # Create a choices vector that sliderTextInput will use
-      slider_choices <- display_labels
+    # Determine the selected display label based on the selected value
+    selected_label <- NULL
+    if (!is.null(selected) && selected != "") {
+      selected_label <- value_to_label[selected]
+    }
 
-      # Determine the selected display label based on the selected value
-      selected_label <- NULL
-      if (!is.null(selected) && selected != "") {
-          selected_label <- value_to_label[selected]
-      }
+    # If no valid selection, default to first choice
+    if (is.null(selected_label) || is.na(selected_label)) {
+      selected_label <- slider_choices[1]
+    }
 
-      # If no valid selection, default to first choice
-      if (is.null(selected_label) || is.na(selected_label)) {
-          selected_label <- slider_choices[1]
-      }
+    # Store the mapping for later use in JavaScript
+    value_map <- option
 
-      # Store the mapping for later use in JavaScript
-      value_map <- option
+    if (!is.null(shiny::getDefaultReactiveDomain())) {
+      session <- shiny::getDefaultReactiveDomain()
+      session$userData[[paste0(id, "_values")]] <- value_map
+    }
 
-      if (!is.null(shiny::getDefaultReactiveDomain())) {
-          session <- shiny::getDefaultReactiveDomain()
-          session$userData[[paste0(id, "_values")]] <- value_map
-      }
+    # Create the slider with display labels
+    output <- shinyWidgets::sliderTextInput(
+      inputId = id,
+      label = label,
+      choices = slider_choices, # These are the display labels
+      selected = selected_label, # Must be a display label, not a value
+      force_edges = force_edges,
+      grid = grid,
+      ...
+    )
 
-      # Create the slider with display labels
-      output <- shinyWidgets::sliderTextInput(
-          inputId     = id,
-          label       = label,
-          choices     = slider_choices,  # These are the display labels
-          selected    = selected_label,  # Must be a display label, not a value
-          force_edges = force_edges,
-          grid        = grid,
-          ...
-      )
+    # Store the values in a data attribute for extraction
+    values_json <- jsonlite::toJSON(values)
 
-      # Store the values in a data attribute for extraction
-      values_json <- jsonlite::toJSON(values)
-
-      # Add a data-values attribute to the input element for extraction
-      js_add_values <- sprintf('
+    # Add a data-values attribute to the input element for extraction
+    js_add_values <- sprintf(
+      '
         $(document).ready(function() {
           $("#%s input").attr("data-values", %s);
         });
-      ', id, values_json)
+      ',
+      id,
+      values_json
+    )
 
-      output <- shiny::tagAppendChild(
-          output,
-          shiny::tags$script(htmltools::HTML(js_add_values))
-      )
+    output <- shiny::tagAppendChild(
+      output,
+      shiny::tags$script(htmltools::HTML(js_add_values))
+    )
 
-      # JavaScript to map the display label back to the stored value and track interaction
-      js_convert <- sprintf("
+    # JavaScript to map the display label back to the stored value and track interaction
+    js_convert <- sprintf(
+      "
       $(document).ready(function() {
         var valueMap = %s;
-        
+
         $('#%s').on('focus mousedown change', function(e) {
           var currentLabel = $(this).val();
 
@@ -925,65 +1138,75 @@ sd_question <- function(
             window['markInteracted_%s']();
             Shiny.setInputValue('%s_interacted', true, {priority: 'event'});
           }
-          
+
           // Find the internal value that matches this display label
           Shiny.setInputValue('%s', valueMap[currentLabel]);
         });
       });
-    ", jsonlite::toJSON(as.list(value_map)), id, id, id, id)
-      
-      # Add auto-save functionality
-      # Convert selected_label to its corresponding value for auto-save
-      default_value <- value_map[[selected_label]]
-      autosave_js <- create_autosave_js(id, "slider", list(
+    ",
+      jsonlite::toJSON(as.list(value_map)),
+      id,
+      id,
+      id,
+      id
+    )
+
+    # Add auto-save functionality
+    # Convert selected_label to its corresponding value for auto-save
+    default_value <- value_map[[selected_label]]
+    autosave_js <- create_autosave_js(
+      id,
+      "slider",
+      list(
         valueMap = as.list(value_map),
         defaultValue = default_value,
         defaultLabel = selected_label
-      ))
-      js_convert <- paste(js_convert, autosave_js, sep = "\n")
-
-      output <- shiny::tagAppendChild(
-          output,
-          shiny::tags$script(htmltools::HTML(js_convert))
       )
+    )
+    js_convert <- paste(js_convert, autosave_js, sep = "\n")
 
-    } else if (type == "slider_numeric") {
-      # Handle numeric slider - supports BOTH single and range values
-      slider_values <- option
+    output <- shiny::tagAppendChild(
+      output,
+      shiny::tags$script(htmltools::HTML(js_convert))
+    )
+  } else if (type == "slider_numeric") {
+    # Handle numeric slider - supports BOTH single and range values
+    slider_values <- option
 
-      if (!is.null(shiny::getDefaultReactiveDomain())) {
-          session <- shiny::getDefaultReactiveDomain()
-          session$userData[[paste0(id, "_values")]] <- slider_values
-      }
+    if (!is.null(shiny::getDefaultReactiveDomain())) {
+      session <- shiny::getDefaultReactiveDomain()
+      session$userData[[paste0(id, "_values")]] <- slider_values
+    }
 
-      if (is.null(default)) {
-          default <- stats::median(slider_values)
-      }
+    if (is.null(default)) {
+      default <- stats::median(slider_values)
+    }
 
-      # Check if this is a range slider
-      is_range <- is.numeric(default) && length(default) > 1
+    # Check if this is a range slider
+    is_range <- is.numeric(default) && length(default) > 1
 
-      # Create the slider
-      output <- shiny::sliderInput(
-          inputId = id,
-          label   = label,
-          min     = min(slider_values),
-          max     = max(slider_values),
-          value   = default,  # Can be single value or vector of length 2 for range
-          ...
-      )
+    # Create the slider
+    output <- shiny::sliderInput(
+      inputId = id,
+      label = label,
+      min = min(slider_values),
+      max = max(slider_values),
+      value = default, # Can be single value or vector of length 2 for range
+      ...
+    )
 
-      # For range sliders, add a custom observer that manually creates a string value
-      if (is_range) {
-          # Add JavaScript to force a manual string representation of the range
-          js_range_handler <- sprintf("
+    # For range sliders, add a custom observer that manually creates a string value
+    if (is_range) {
+      # Add JavaScript to force a manual string representation of the range
+      js_range_handler <- sprintf(
+        "
       $(document).ready(function() {
         // Track interaction on mousedown/focus
         $('#%s').on('mousedown focus', function() {
           window['markInteracted_%s']();
           Shiny.setInputValue('%s_interacted', true, {priority: 'event'});
         });
-        
+
         // Handle value changes
         $('#%s').on('input change slide slidechange', function(event, ui) {
           // Force a string representation for range sliders
@@ -993,101 +1216,138 @@ sd_question <- function(
           }
         });
       });
-    ", id, id, id, id, id)
-      
-          # Add auto-save functionality
-          autosave_js <- create_autosave_js(id, "slider_numeric_range", list(defaultValue = default))
-          js_range_handler <- paste(js_range_handler, autosave_js, sep = "\n")
+    ",
+        id,
+        id,
+        id,
+        id,
+        id
+      )
 
-          output <- shiny::tagAppendChild(
-              output,
-              shiny::tags$script(htmltools::HTML(js_range_handler))
+      # Add auto-save functionality
+      autosave_js <- create_autosave_js(
+        id,
+        "slider_numeric_range",
+        list(defaultValue = default)
+      )
+      js_range_handler <- paste(js_range_handler, autosave_js, sep = "\n")
+
+      output <- shiny::tagAppendChild(
+        output,
+        shiny::tags$script(htmltools::HTML(js_range_handler))
+      )
+
+      # Add an observer in the server to capture this string value
+      if (!is.null(shiny::getDefaultReactiveDomain())) {
+        session <- shiny::getDefaultReactiveDomain()
+
+        # Debug observer to catch auto-save calls
+        shiny::observe({
+          debug_msg <- session$input$debug_range_autosave
+          if (!is.null(debug_msg)) {
+            cat("DEBUG Auto-save triggered from JS:", debug_msg, "\n")
+          }
+        })
+
+        shiny::observe({
+          # Get the range string from our custom input
+          range_string <- session$input[[paste0(id, "_manual_range")]]
+          interaction_flag <- session$input[[paste0(id, "_interacted")]]
+
+          cat(
+            "DEBUG Range Observer - ID:",
+            id,
+            "range_string:",
+            range_string,
+            "interaction_flag:",
+            interaction_flag,
+            "\n"
           )
 
-          # Add an observer in the server to capture this string value
-          if (!is.null(shiny::getDefaultReactiveDomain())) {
-              session <- shiny::getDefaultReactiveDomain()
-              
-              # Debug observer to catch auto-save calls
-              shiny::observe({
-                  debug_msg <- session$input$debug_range_autosave
-                  if (!is.null(debug_msg)) {
-                      cat("DEBUG Auto-save triggered from JS:", debug_msg, "\n")
-                  }
-              })
-              
-              shiny::observe({
-                  # Get the range string from our custom input
-                  range_string <- session$input[[paste0(id, "_manual_range")]]
-                  interaction_flag <- session$input[[paste0(id, "_interacted")]]
+          if (!is.null(range_string) && range_string != "") {
+            # Store this directly using the main id
+            sd_store_value(range_string, id)
+            cat("DEBUG Range value stored for:", id, "\n")
 
-                  cat("DEBUG Range Observer - ID:", id, "range_string:", range_string, "interaction_flag:", interaction_flag, "\n")
+            # Handle timestamp the same way as main observer
+            if (!is.null(interaction_flag) && interaction_flag) {
+              # Get access to all_data and changed_fields (same as main observer)
+              all_data <- session$userData$all_data
+              changed_fields <- session$userData$changed_fields
 
-                  if (!is.null(range_string) && range_string != "") {
-                      # Store this directly using the main id
-                      sd_store_value(range_string, id)
-                      cat("DEBUG Range value stored for:", id, "\n")
-                      
-                      # Handle timestamp the same way as main observer
-                      if (!is.null(interaction_flag) && interaction_flag) {
-                          # Get access to all_data and changed_fields (same as main observer)
-                          all_data <- session$userData$all_data
-                          changed_fields <- session$userData$changed_fields
-                          
-                          cat("DEBUG Checking userData - all_data exists:", !is.null(all_data), "changed_fields exists:", !is.null(changed_fields), "\n")
-                          
-                          if (!is.null(all_data) && !is.null(changed_fields)) {
-                              timestamp <- get_utc_timestamp()
-                              ts_id <- paste0(id, "_timestamp")
-                              all_data[[ts_id]] <- timestamp
-                              changed_fields(c(changed_fields(), ts_id))
-                              cat("DEBUG Timestamp stored for:", id, "timestamp:", timestamp, "\n")
-                          } else {
-                              cat("DEBUG Could not store timestamp - missing userData\n")
-                          }
-                      } else {
-                          cat("DEBUG No interaction flag, skipping timestamp\n")
-                      }
-                  } else {
-                      cat("DEBUG No range string to process\n")
-                  }
-              })
+              cat(
+                "DEBUG Checking userData - all_data exists:",
+                !is.null(all_data),
+                "changed_fields exists:",
+                !is.null(changed_fields),
+                "\n"
+              )
+
+              if (!is.null(all_data) && !is.null(changed_fields)) {
+                timestamp <- get_utc_timestamp()
+                ts_id <- paste0(id, "_timestamp")
+                all_data[[ts_id]] <- timestamp
+                changed_fields(c(changed_fields(), ts_id))
+                cat(
+                  "DEBUG Timestamp stored for:",
+                  id,
+                  "timestamp:",
+                  timestamp,
+                  "\n"
+                )
+              } else {
+                cat("DEBUG Could not store timestamp - missing userData\n")
+              }
+            } else {
+              cat("DEBUG No interaction flag, skipping timestamp\n")
+            }
+          } else {
+            cat("DEBUG No range string to process\n")
           }
-      } else {
-          # For single sliders, just track interaction
-          js_single_handler <- sprintf("
+        })
+      }
+    } else {
+      # For single sliders, just track interaction
+      js_single_handler <- sprintf(
+        "
       $(document).ready(function() {
         $('#%s').on('mousedown focus', function() {
           window['markInteracted_%s']();
           Shiny.setInputValue('%s_interacted', true, {priority: 'event'});
         });
       });
-    ", id, id, id)
-      
-          # Add auto-save functionality
-          autosave_js <- create_autosave_js(id, "slider_numeric_single", list(defaultValue = default))
-          js_single_handler <- paste(js_single_handler, autosave_js, sep = "\n")
+    ",
+        id,
+        id,
+        id
+      )
 
-          output <- shiny::tagAppendChild(
-              output,
-              shiny::tags$script(htmltools::HTML(js_single_handler))
-          )
-      }
+      # Add auto-save functionality
+      autosave_js <- create_autosave_js(
+        id,
+        "slider_numeric_single",
+        list(defaultValue = default)
+      )
+      js_single_handler <- paste(js_single_handler, autosave_js, sep = "\n")
 
+      output <- shiny::tagAppendChild(
+        output,
+        shiny::tags$script(htmltools::HTML(js_single_handler))
+      )
+    }
   } else if (type == "date") {
-
     output <- shiny::dateInput(
-      inputId            = id,
-      label              = label,
-      value              = NULL,
-      min                = NULL,
-      max                = NULL,
-      format             = "yyyy-mm-dd",
-      startview          = "month",
-      weekstart          = 0,
-      language           = language,
-      autoclose          = TRUE,
-      datesdisabled      = NULL,
+      inputId = id,
+      label = label,
+      value = NULL,
+      min = NULL,
+      max = NULL,
+      format = "yyyy-mm-dd",
+      startview = "month",
+      weekstart = 0,
+      language = language,
+      autoclose = TRUE,
+      datesdisabled = NULL,
       daysofweekdisabled = NULL,
       ...
     )
@@ -1099,29 +1359,32 @@ sd_question <- function(
                   window['markInteracted_%s']();
                   Shiny.setInputValue('%s_interacted', true, {priority: 'event'});
               });
-           }, 1000);",  # 1000 ms delay
-      id, id, id
+           }, 1000);", # 1000 ms delay
+      id,
+      id,
+      id
     )
-    
+
     # Add auto-save functionality
     autosave_js <- create_autosave_js(id, "date", list())
     combined_js <- paste(js_date_interaction, autosave_js, sep = "\n")
-    
-    output <- shiny::tagAppendChild(output, shiny::tags$script(htmltools::HTML(combined_js)))
 
+    output <- shiny::tagAppendChild(
+      output,
+      shiny::tags$script(htmltools::HTML(combined_js))
+    )
   } else if (type == "daterange") {
-
     output <- shiny::dateRangeInput(
-      inputId   = id,
-      label     = label,
-      start     = NULL,
-      end       = NULL,
-      min       = NULL,
-      max       = NULL,
-      format    = "yyyy-mm-dd",
+      inputId = id,
+      label = label,
+      start = NULL,
+      end = NULL,
+      min = NULL,
+      max = NULL,
+      format = "yyyy-mm-dd",
       startview = "month",
       weekstart = 0,
-      language  = language,
+      language = language,
       separator = "-",
       autoclose = TRUE,
       ...
@@ -1134,18 +1397,21 @@ sd_question <- function(
                   window['markInteracted_%s']();
                   Shiny.setInputValue('%s_interacted', true, {priority: 'event'});
               });
-           }, 1000);",  # 1000 ms delay
-      id, id, id
+           }, 1000);", # 1000 ms delay
+      id,
+      id,
+      id
     )
-    
+
     # Add auto-save functionality
     autosave_js <- create_autosave_js(id, "daterange", list())
     combined_js <- paste(js_daterange_interaction, autosave_js, sep = "\n")
-    
-    output <- shiny::tagAppendChild(output, shiny::tags$script(htmltools::HTML(combined_js)))
 
+    output <- shiny::tagAppendChild(
+      output,
+      shiny::tags$script(htmltools::HTML(combined_js))
+    )
   } else if (type == "matrix") {
-
     header <- shiny::tags$tr(
       shiny::tags$th(""),
       lapply(names(option), function(opt) shiny::tags$th(opt))
@@ -1184,10 +1450,13 @@ sd_question <- function(
 
   if (!is.null(shiny::getDefaultReactiveDomain())) {
     # In a reactive context, directly add to output with renderUI
+    # Use "_question" suffix to avoid input/output ID conflicts
     shiny::isolate({
       output_div <- shiny::tags$div(output)
       output <- shiny::getDefaultReactiveDomain()$output
-      output[[id]] <- shiny::renderUI({ output_div })
+      output[[paste0(id, "_question")]] <- shiny::renderUI({
+        output_div
+      })
     })
   } else {
     # If not in a reactive context, just return the element
@@ -1270,43 +1539,48 @@ sd_question <- function(
 #'
 #' @export
 sd_question_custom <- function(
-    id,
-    label,
-    output,  # The UI component (e.g., leafletOutput, plotlyOutput)
-    value,   # Reactive expression that returns the value to store in the data
-    height = "400px"
+  id,
+  label,
+  output, # The UI component (e.g., leafletOutput, plotlyOutput)
+  value, # Reactive expression that returns the value to store in the data
+  height = "400px"
 ) {
-    # Get the current shiny session
-    session <- shiny::getDefaultReactiveDomain()
-    if (is.null(session)) {
-        stop("sd_question_widget must be called from within a Shiny reactive context")
-    }
-
-    # Create the container div
-    output_contents <- shiny::tagList(
-        shiny::tags$label(class = "control-label", shiny::HTML(label)),
-        shiny::div(
-            style = "display: none;",
-            shiny::textInput(id, label = NULL, value = "", width = "0px")
-        ),
-        output
+  # Get the current shiny session
+  session <- shiny::getDefaultReactiveDomain()
+  if (is.null(session)) {
+    stop(
+      "sd_question_widget must be called from within a Shiny reactive context"
     )
-    output_div <- make_question_container(id, output_contents, "100%")
+  }
 
-    # In a reactive context, directly add to output with renderUI
-    shiny::isolate({
-        output_div <- shiny::tags$div(output_div)
-        output <- shiny::getDefaultReactiveDomain()$output
-        output[[id]] <- shiny::renderUI({ output_div })
-    })
+  # Create the container div
+  output_contents <- shiny::tagList(
+    shiny::tags$label(class = "control-label", shiny::HTML(label)),
+    shiny::div(
+      style = "display: none;",
+      shiny::textInput(id, label = NULL, value = "", width = "0px")
+    ),
+    output
+  )
+  output_div <- make_question_container(id, output_contents, "100%")
 
-    # Observer to update the stored value when value changes
-    shiny::observe({
-        temp_value <- value()
-        if (!is.null(temp_value)) {
-            shiny::updateTextInput(session, id, value = as.character(temp_value))
-        }
+  # In a reactive context, directly add to output with renderUI
+  # Use "_question" suffix to avoid input/output ID conflicts
+  shiny::isolate({
+    output_div <- shiny::tags$div(output_div)
+    output <- shiny::getDefaultReactiveDomain()$output
+    output[[paste0(id, "_question")]] <- shiny::renderUI({
+      output_div
     })
+  })
+
+  # Observer to update the stored value when value changes
+  shiny::observe({
+    temp_value <- value()
+    if (!is.null(temp_value)) {
+      shiny::updateTextInput(session, id, value = as.character(temp_value))
+    }
+  })
 }
 
 # date_interaction function removed - now using unified auto-save helper
@@ -1382,7 +1656,7 @@ sd_next <- function(next_page = NULL, label = NULL) {
     label <- translations[['next']]
   }
 
-  button_id <- "page_id_next"  # Placeholder ID
+  button_id <- "page_id_next" # Placeholder ID
   shiny::tagList(
     shiny::div(
       `data-next-page` = if (!is.null(next_page)) next_page else "",
@@ -1480,14 +1754,16 @@ sd_close <- function(label = NULL) {
         onclick = "Shiny.setInputValue('show_exit_modal', true, {priority: 'event'});"
       )
     ),
-    shiny::tags$script(htmltools::HTML("
+    shiny::tags$script(htmltools::HTML(
+      "
       Shiny.addCustomMessageHandler('closeWindow', function(message) {
         window.close();
         if (!window.closed) {
           alert('Please close this tab manually to exit the survey.');
         }
       });
-    "))
+    "
+    ))
   )
 }
 
@@ -1498,7 +1774,9 @@ sd_close <- function(label = NULL) {
 #' 'shiny' applications.
 #'
 #' @param id A character string of a unique id to be used to identify the
-#'   redirect button in the survey body.
+#'   redirect button in the survey body. In reactive contexts, this becomes
+#'   the output ID, while the actual button gets the ID `id + "_btn"` to
+#'   avoid input/output conflicts.
 #' @param url A character string specifying the URL to redirect to.
 #' @param button A logical value indicating whether to create a button (`TRUE`)
 #'   or a text element (`FALSE`) for the redirect. Default is `TRUE`.
@@ -1510,9 +1788,10 @@ sd_close <- function(label = NULL) {
 #' @param newtab A logical value indicating whether to open the URL in a new
 #'   tab (`TRUE`) or in the current tab (`FALSE`). Default is `FALSE`.
 #'
-#' @return In a reactive context, returns a function that when called, renders
-#' the redirect element. In a non-reactive context, returns the redirect
-#' element directly.
+#' @return In a reactive context, creates an output with the specified ID that
+#' can be displayed using `sd_output()`. The actual button element gets the
+#' ID `id + "_btn"` to prevent input/output conflicts. In a non-reactive
+#' context, returns the redirect element directly.
 #'
 #' @examples
 #' if (interactive()) {
@@ -1563,12 +1842,12 @@ sd_close <- function(label = NULL) {
 #' }
 #' @export
 sd_redirect <- function(
-    id,
-    url,
-    button = TRUE,
-    label  = "Click here",
-    delay  = NULL,
-    newtab = FALSE
+  id,
+  url,
+  button = TRUE,
+  label = "Click here",
+  delay = NULL,
+  newtab = FALSE
 ) {
   # Get translations
   translations <- get_translations()$translations
@@ -1583,7 +1862,9 @@ sd_redirect <- function(
     shiny::isolate({
       output <- shiny::getDefaultReactiveDomain()$output
       output[[id]] <- shiny::renderUI({
-        create_redirect_element(id, url, button, label, delay, newtab)
+        # Use a different ID for the actual input element to avoid conflicts
+        button_id <- paste0(id, "_btn")
+        create_redirect_element(button_id, url, button, label, delay, newtab)
       })
     })
   } else {
@@ -1593,7 +1874,14 @@ sd_redirect <- function(
 }
 
 # Function to create the redirect element
-create_redirect_element <- function(id, url, button, label, delay, newtab = FALSE) {
+create_redirect_element <- function(
+  id,
+  url,
+  button,
+  label,
+  delay,
+  newtab = FALSE
+) {
   # Validate URL
   if (!grepl("^https?://", url)) {
     url <- paste0("https://", url)
@@ -1636,9 +1924,12 @@ create_redirect_element <- function(id, url, button, label, delay, newtab = FALS
           element,
           shiny::p(
             style = "margin: 0.5rem 0 0 0;",
-            text_redirect, " ",
+            text_redirect,
+            " ",
             shiny::tags$strong(id = countdown_id, delay),
-            " ", text_seconds, ".",
+            " ",
+            text_seconds,
+            ".",
             if (newtab) {
               glue::glue(" ({text_newtab})")
             } else {
@@ -1743,7 +2034,9 @@ sd_get_url_pars <- function(...) {
     session <- shiny::getDefaultReactiveDomain()
 
     if (is.null(session)) {
-      stop("sd_get_url_pars() must be called from within a Shiny reactive context")
+      stop(
+        "sd_get_url_pars() must be called from within a Shiny reactive context"
+      )
     }
 
     full_url <- session$clientData$url_search
@@ -1856,21 +2149,66 @@ sd_display_value <- function(id, display_type = "inline", wrapper = NULL, ...) {
 #'
 #' @export
 sd_output <- function(
-    id,
-    type = NULL,
-    width = "100%",
-    display = "text",
-    inline = TRUE,
-    wrapper = NULL,
-    ...
+  id,
+  type = NULL,
+  width = "100%",
+  display = "text",
+  inline = TRUE,
+  wrapper = NULL,
+  ...
 ) {
+  # Use localStorage for reactive output restoration (simpler approach)
+  js_localStorage_restore <- sprintf(
+    "
+    $(document).ready(function() {
+      var id = '%s', key = 'surveydown_reactive_' + id;
+
+      function save() {
+        var content = $('#' + id).html();
+        if (content && content.trim()) {
+          try {
+            localStorage.setItem(key, content);
+          } catch(e) {
+            console.warn('Could not save to localStorage:', e);
+          }
+        }
+      }
+
+      function restore() {
+        try {
+          var saved = localStorage.getItem(key);
+          var el = $('#' + id);
+          if (saved && el.length && !el.html().trim()) {
+            el.html(saved);
+          }
+        } catch(e) {
+          console.warn('Could not restore from localStorage:', e);
+        }
+      }
+
+      setTimeout(restore, 100);
+      new MutationObserver(function() { setTimeout(save, 200); })
+        .observe(document.getElementById(id) || document.body, {childList: true, subtree: true});
+      $(window).on('beforeunload', save);
+    });
+    ",
+    id
+  )
+
   if (is.null(type)) {
-    # If only id is provided, behave like shiny::uiOutput
-    return(shiny::uiOutput(id, inline = inline, ...))
+    output_element <- shiny::uiOutput(id, inline = inline, ...)
+    return(shiny::tagList(
+      output_element,
+      shiny::tags$script(htmltools::HTML(js_localStorage_restore))
+    ))
   }
 
   if (type == "question") {
-    return(make_question_container(id, shiny::uiOutput(id), width))
+    type_id <- paste0(id, "_", type)
+    return(shiny::tagList(
+      make_question_container(id, shiny::uiOutput(type_id), width),
+      shiny::tags$script(htmltools::HTML(js_localStorage_restore))
+    ))
   }
 
   if (type %in% c("value", "label_option", "label_question")) {
@@ -1880,12 +2218,13 @@ sd_output <- function(
       stop("Invalid display type. Choose 'text', 'verbatim', or 'ui'.")
     }
 
-    output <- switch(display,
-                     "text" = shiny::textOutput(type_id, inline = inline),
-                     "verbatim" = shiny::verbatimTextOutput(type_id, inline = inline),
-                     "ui" = shiny::uiOutput(type_id, inline = inline),
-                     # Default to textOutput if display is not specified
-                     shiny::textOutput(type_id, inline = inline)
+    output <- switch(
+      display,
+      "text" = shiny::textOutput(type_id, inline = inline),
+      "verbatim" = shiny::verbatimTextOutput(type_id, inline = inline),
+      "ui" = shiny::uiOutput(type_id, inline = inline),
+      # Default to textOutput if display is not specified
+      shiny::textOutput(type_id, inline = inline)
     )
 
     if (!is.null(wrapper)) {
@@ -1898,36 +2237,21 @@ sd_output <- function(
   stop("Invalid type. Choose 'question' or 'value'.")
 }
 
-#' Generate a Random Completion Code
+#' Depreciated Survey Dashboard
 #'
-#' This function generates a random completion code with a specified number of
-#' digits. The code is returned as a character string.
-#'
-#' @param digits An integer specifying the number of digits in the completion
-#'   code. Must be a positive integer. Default is 6.
-#'
-#' @return A character string representing the random completion code.
-#'
-#' @examples
-#' library(surveydown)
-#'
-#' sd_completion_code()  # generates a 6-digit code
-#' sd_completion_code(digits = 8)  # generates an 8-digit code
-#' sd_completion_code(digits = 4)  # generates a 4-digit code
-#' sd_completion_code(digits = 10)  # generates a 10-digit code
+#' This dashboard was depreciated in version v0.13.0. Now the sdstudio package
+#' fully includes the functionality that was previously included in this function.
+#' @param gssencmode Character string. The GSS encryption mode for the database
+#'   connection. Defaults to `"auto"`. Options are:
+#'   - `"auto"`: Tries `"prefer"` first, then falls back to `"disable"` if GSSAPI negotiation fails
+#'   - `"prefer"`: Uses GSSAPI encryption if available, plain connection otherwise
+#'   - `"disable"`: Disables GSSAPI encryption entirely
+#'   Set to `"disable"` if you're having connection issues on a secure connection like a VPN.
 #'
 #' @export
-sd_completion_code <- function(digits = 6) {
-  if (!is.numeric(digits) || digits < 1 || digits != round(digits)) {
-    stop("'digits' must be a positive integer")
-  }
-
-  # Generate random digits
-  digits_vector <- sample(0:9, digits, replace = TRUE)
-
-  # Ensure the first digit is not 0
-  digits_vector[1] <- sample(1:9, 1)
-
-  # Combine into a single string
-  paste(digits_vector, collapse = "")
+sd_dashboard <- function(gssencmode = "auto") {
+  # v0.13.0
+  .Deprecated(
+    "This function was depreciated in v0.13.0; use the sdstudio package instead"
+  )
 }
