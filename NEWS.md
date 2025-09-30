@@ -1,5 +1,24 @@
 # surveydown (development version)
 
+# surveydown 0.13.3
+
+- Enhanced the `numeric` question type input logic.
+- Added validation to ensure page closing fences (`:::`) are properly matched in survey.qmd files.
+- Added validation to ensure `sd_server()` is called as the last statement in the server function.
+- Survey templates are now split into individual repos. For details, see the [surveydown-dev](https://github.com/surveydown-dev) organization site and search for "template" in Repositories.
+- The `sd_create_survey()` function now obtains survey templates from these new individual repos. The function syntax remains the same.
+
+# surveydown 0.13.2
+
+- New feature: `sd_stop_if()` function to stop the navigate button if certain conditions cannot be met.
+- Deprecated `sd_skip_forward()` function, and reuse `sd_stop_if()`.
+- Enhanced: Now for the judging conditions in the 3 condition check functions (`sd_show_if()`, `sd_skip_if()`, and `sd_stop_if()`), these judging questions are auto-assigned as required questions.
+- Updated `sd_create_survey()` to update with the latest templates.
+
+# surveydown 0.13.1
+
+- Updated citation to include *PLOS One* publication
+
 # surveydown 0.13.0
 
 - Enhanced: `sd_store_value()` - Now session-persistent with database integration, compatible with local testing. It also saves the value into the server so it matches the database.
