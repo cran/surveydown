@@ -4,11 +4,18 @@
 \alias{sd_close}
 \title{Create a 'Close' Button to Exit the Survey}
 \usage{
-sd_close(label = NULL)
+sd_close(label_close = NULL, label_previous = NULL, show_previous = NULL)
 }
 \arguments{
-\item{label}{Character string. The label of the 'Close' button. Defaults to
+\item{label_close}{Character string. The label of the 'Close' button. Defaults to
 \code{NULL}, in which case the word \code{"Exit Survey"} will be used.}
+
+\item{label_previous}{Character string. The label for the 'Previous' button. Defaults to
+\code{NULL}, which uses "← Previous" (or the translated equivalent).}
+
+\item{show_previous}{Logical. Whether to show the Previous button alongside the Close button.
+Set to \code{TRUE} to allow users to go back before closing. Defaults to \code{FALSE}. Note: Unlike
+\code{sd_nav()}, this parameter does NOT read from the \code{show-previous} YAML setting.}
 }
 \value{
 A 'shiny' tagList containing the 'Close' button UI element and
@@ -39,26 +46,16 @@ question or not) is controlled by the \code{rate_survey} parameter in the
 if (interactive()) {
   library(surveydown)
 
-  # Get path to example survey file
-  survey_path <- system.file("examples", "sd_close.qmd",
-                             package = "surveydown")
+  # Use sd_close() in survey.qmd on the last page:
+  # --- end
+  #
+  # Thank you for completing the survey!
+  #
+  # `r sd_close(label_close = "Exit Survey", show_previous = TRUE)`
 
-  # Copy to a temporary directory
-  temp_dir <- tempdir()
-  file.copy(survey_path, file.path(temp_dir, "survey.qmd"))
-  orig_dir <- getwd()
-  setwd(temp_dir)
-
-  # Define a minimal server
-  server <- function(input, output, session) {
-    sd_server()
-  }
-
-  # Run the app
-  shiny::shinyApp(ui = sd_ui(), server = server)
-
-  # Clean up
-  setwd(orig_dir)
+  # Find a working directory and start from a template:
+  sd_create_survey(template = "default")
+  # This creates survey.qmd and app.R - launch the survey using app.R
 }
 
 }

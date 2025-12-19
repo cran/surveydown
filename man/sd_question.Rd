@@ -9,6 +9,7 @@ sd_question(
   type = NULL,
   label = NULL,
   option = NULL,
+  options = NULL,
   cols = "80",
   direction = "horizontal",
   status = "default",
@@ -42,7 +43,20 @@ formatted with markdown. Defaults to \code{NULL}}
 
 \item{option}{Named vector for the \code{"select"}, \code{"radio"}, \code{"checkbox"},
 and \code{"slider"} question types, or numeric vector for \code{"slider_numeric"}
-question type.}
+question type. Can be provided in multiple formats:
+\itemize{
+\item Named vector: \code{c("Display A" = "value_a", "Display B" = "value_b")} -
+Names are shown in UI, values are stored in database
+\item Unnamed character vector: \code{c("Option 1", "Option 2")} - Values are shown in UI
+and automatically converted to snake_case for database storage
+(e.g., "option_1", "option_2")
+\item Unnamed numeric vector: \code{c(1, 2, 3)} - For non-slider questions, converted to
+\code{c("1" = "1", "2" = "2", "3" = "3")}. For \code{slider_numeric}, kept as numeric.
+}}
+
+\item{options}{Alias for \code{option}. Either \code{option} or \code{options} can be used.
+If both are provided, \code{option} takes precedence. Supports the same formats
+as \code{option}.}
 
 \item{cols}{Integer. Number of columns for the \code{"textarea"} question type.
 Defaults to \code{80}.}
@@ -130,26 +144,36 @@ row ID) and a value (used as the row label).
 if (interactive()) {
   library(surveydown)
 
-  # Get path to example survey file
-  survey_path <- system.file("examples", "basic_survey.qmd",
-                             package = "surveydown")
+  # Use sd_question() to create questions in R chunks of survey.qmd:
+  # sd_question(
+  #   id    = "favorite_penguin_static",
+  #   type  = "mc",
+  #   label = "Which type of penguin do you like the best?",
+  #   option = c(
+  #     "Adélie"    = "adelie",
+  #     "Chinstrap" = "chinstrap",
+  #     "Gentoo"    = "gentoo"
+  #   )
+  #  )
 
-  # Copy to a temporary directory
-  temp_dir <- tempdir()
-  file.copy(survey_path, file.path(temp_dir, "survey.qmd"))
-  orig_dir <- getwd()
-  setwd(temp_dir)
+  # Use sd_question() to create reactive questions in app.R under server:
+  # server <- function(input, output, session) {
+  #   sd_question(
+  #     id    = "favorite_penguin_reactive",
+  #     type  = "mc",
+  #     label = "Which type of penguin do you like the best?",
+  #     option = c(
+  #       "Adélie"    = "adelie",
+  #       "Chinstrap" = "chinstrap",
+  #       "Gentoo"    = "gentoo"
+  #     )
+  #    )
+  #   sd_server()
+  # }
 
-  # Define a minimal server
-  server <- function(input, output, session) {
-    sd_server()
-  }
-
-  # Run the app
-  shiny::shinyApp(ui = sd_ui(), server = server)
-
-  # Clean up
-  setwd(orig_dir)
+  # Find a working directory and start from a template:
+  sd_create_survey(template = "default")
+  # This creates survey.qmd and app.R - launch the survey using app.R
 }
 
 }
