@@ -11,23 +11,94 @@ choice_html <- function(option) {
   choice_names_md <- names(option)
   choice_names_html <- lapply(choice_names_md, function(name) {
     html_name <- markdown_to_html(name)
-    clean_name <- gsub("<[/]?p>|\\n", "", html_name)
-    return(clean_name)
+    gsub("<[/]?p>|\\n", "", html_name)
   })
   names(option) <- unlist(choice_names_html)
   return(option)
 }
 
 # Convert option list to choiceNames and choiceValues with HTML support
-choice_list_html <- function(option) {
-  choice_names <- lapply(names(option), function(name) {
-    html_name <- markdown_to_html(name)
+choice_list_html <- function(option, option_attr = NULL) {
+  n <- length(option)
+  attrs <- rep(NA_character_, n)
+  if (!is.null(option_attr)) {
+    m <- min(length(option_attr), n)
+    attrs[seq_len(m)] <- option_attr[seq_len(m)]
+  }
+  choice_names <- lapply(seq_along(names(option)), function(i) {
+    html_name <- markdown_to_html(names(option)[[i]])
     # Remove paragraph tags but keep other HTML formatting
     clean_name <- gsub("<[/]?p>|\\n", "", html_name)
+    if (!is.na(attrs[[i]]) && nzchar(attrs[[i]])) {
+      return(shiny::tagList(
+        shiny::tags$span(class = "sd-option-label", shiny::HTML(clean_name)),
+        shiny::tags$span(
+          class = "sd-attr-wrap",
+          shiny::tags$button(
+            class = "sd-attr-btn",
+            type = "button",
+            onclick = "sdAttrToggle(this, event)",
+            "?"
+          ),
+          shiny::tags$div(
+            class = "sd-attr-popup",
+            attrs[[i]]
+          )
+        )
+      ))
+    }
     return(shiny::HTML(clean_name))
   })
   choice_values <- as.list(unname(option))
   return(list(names = choice_names, values = choice_values))
+}
+
+# Build choiceNames/choiceValues for image-choice questions. Each choice
+# name is an image card (the image plus an optional text caption taken from
+# the option name). `option` is a named vector (names = captions, values =
+# stored values); `image` is a parallel vector of image src strings (paths
+# resolved against the survey's images/www folders, or full URLs).
+choice_image_html <- function(option, image) {
+  n <- length(option)
+  captions <- names(option)
+  if (is.null(captions)) {
+    captions <- rep("", n)
+  }
+  choice_names <- lapply(seq_len(n), function(i) {
+    card <- list(
+      shiny::tags$img(
+        src = image[[i]],
+        class = "sd-image-card-img",
+        alt = captions[[i]]
+      )
+    )
+    # Show a caption only when the option name carries text
+    if (!is.na(captions[[i]]) && nzchar(captions[[i]])) {
+      clean <- gsub("<[/]?p>|\\n", "", markdown_to_html(captions[[i]]))
+      card <- c(
+        card,
+        list(shiny::tags$span(
+          class = "sd-image-card-caption",
+          shiny::HTML(clean)
+        ))
+      )
+    }
+    shiny::tags$div(class = "sd-image-card", card)
+  })
+  list(names = choice_names, values = as.list(unname(option)))
+}
+
+# Get reserved column names that cannot be used for page IDs, question IDs, or stored values
+get_reserved_ids <- function() {
+  c(
+    "session_id",
+    "time_start",
+    "time_end",
+    "exit_survey_rating",
+    "current_page",
+    "browser",
+    "ip_address"
+  )
 }
 
 #' Display Package Information on Attach
@@ -400,6 +471,7 @@ tibble_to_list_of_lists <- function(tbl) {
 #'     \item{custom_plotly_chart}{Survey with Plotly visualizations}
 #'     \item{external_redirect}{Template with external site redirects}
 #'     \item{live_polling}{Live polling template for real-time surveys}
+#'     \item{option_shuffling}{Survey with shuffled question options}
 #'     \item{question_types}{Showcases all available question types}
 #'     \item{questions_yml}{Survey with questions defined in a YAML file}
 #'     \item{random_options}{Survey with randomized question options}
@@ -455,6 +527,7 @@ sd_create_survey <- function(template = "default", path = getwd(), ask = TRUE) {
     "custom_plotly_chart",
     "external_redirect",
     "live_polling",
+    "option_shuffling",
     "question_types",
     "questions_yml",
     "random_options",
@@ -481,14 +554,7 @@ sd_create_survey <- function(template = "default", path = getwd(), ask = TRUE) {
 
   dir.create(path, recursive = TRUE, showWarnings = FALSE)
 
-  # Determine where to get template files from
-  if (template == "default") {
-    # Use built-in template
-    template_path <- system.file("template", package = "surveydown")
-  } else {
-    # Download from GitHub
-    template_path <- download_template_from_github(template)
-  }
+  template_path <- download_template_from_github(template)
 
   if (!dir.exists(template_path)) {
     stop("Template directory does not exist.")
@@ -606,21 +672,13 @@ sd_create_survey <- function(template = "default", path = getwd(), ask = TRUE) {
     message("Done!")
   }
 
-  # Create success message that includes the template
   if (any(files_copied)) {
-    if (template == "default") {
-      cli::cli_alert_success(paste("Template created at", path))
-    } else {
-      cli::cli_alert_success(paste("Template of", template, "created at", path))
-    }
+    cli::cli_alert_success(paste("Template of", template, "created at", path))
   } else {
     cli::cli_alert_success("Since all files exist, no file was added.")
   }
 
-  # Clean up temp directory if needed
-  if (template != "default") {
-    unlink(dirname(template_path), recursive = TRUE)
-  }
+  unlink(dirname(template_path), recursive = TRUE)
 
   invisible(NULL)
 }
@@ -1385,7 +1443,7 @@ get_latest_version <- function(url, pattern) {
 
 #' Create a messages template file
 #'
-#' This function creates a template messages.yml file in the project root directory
+#' This function is depreciated. Creates a template messages.yml file in the project root directory
 #' that users can customize to modify system messages.
 #'
 #' @param language Character string specifying the language to use. See
@@ -1413,63 +1471,8 @@ get_latest_version <- function(url, pattern) {
 #'   sd_create_messages(language = "ja")
 #' }
 sd_create_messages <- function(language = "en", path = getwd()) {
-  # Define valid languages
-  valid_languages <- get_valid_languages()
-
-  # Check if language is valid
-  if (is.null(language) || !(language %in% valid_languages)) {
-    stop(
-      "Invalid language selected. Check https://shiny.posit.co/r/reference/shiny/1.7.0/dateinput for supported languages."
-    )
-  }
-
-  # Get default messages
-  messages <- get_messages_default()
-
-  # If language has default messages, use them; otherwise use English
-  template <- list()
-  if (language %in% names(messages)) {
-    template[[language]] <- messages[[language]]
-  } else {
-    template[[language]] <- messages[["en"]]
-    message(
-      "No default messages available for '",
-      language,
-      "'. surveydown currently only provides default messages for the following languages: 'en', 'de', 'fr', 'it', 'es', and 'zh-CN'.\n\n",
-      "Using English messages with ",
-      language,
-      " date picker.\n"
-    )
-  }
-
-  # Create the file path
-  file_path <- file.path(path, "messages.yml")
-
-  # Check if file already exists
-  if (file.exists(file_path)) {
-    stop("messages.yml already exists in the specified path")
-  }
-
-  # Define template header
-  header <- paste(
-    "# Surveydown messages template",
-    "# Edit the values below to customize system messages",
-    "# Keep the structure and keys unchanged",
-    "",
-    sep = "\n"
-  )
-
-  # Write question to YAML (with comment in first lines)
-  yaml_content <- paste0(header, yaml::as.yaml(template))
-  writeLines(yaml_content, con = file_path)
-  message(
-    "Created messages template at: ",
-    file_path,
-    "\n\nModify it to provide custom messages in '",
-    language,
-    "'."
-  )
-  invisible(NULL)
+  # v1.1.0
+  .Deprecated("")
 }
 
 # Helper function to try database connection with specific gssencmode
@@ -1691,6 +1694,8 @@ sd_completion_code <- function(digits = 6) {
 #'   coerced to a character string.
 #' @param id (Optional) Character string. The id (name) of the value in the
 #'   data. If not provided, the name of the `value` variable will be used.
+#'   Cannot be one of the reserved IDs: "session_id", "time_start", "time_end",
+#'   "exit_survey_rating", "current_page", "browser", or "ip_address".
 #' @param db (Optional) Database connection object created with sd_db_connect().
 #'   If provided, enables session persistence. If not provided, will automatically
 #'   look for a variable named 'db' in the calling environment, or fall back to
@@ -1736,6 +1741,19 @@ sd_store_value <- function(value, id = NULL, db = NULL, auto_assign = TRUE) {
     id <- deparse(substitute(value))
   }
 
+  # Check for reserved column names
+  reserved_ids <- get_reserved_ids()
+  if (id %in% reserved_ids) {
+    stop(
+      "Cannot use '",
+      id,
+      "' as a stored value ID. ",
+      "This name is reserved by surveydown. ",
+      "Reserved IDs: ",
+      paste(reserved_ids, collapse = ", ")
+    )
+  }
+
   shiny::isolate({
     session <- shiny::getDefaultReactiveDomain()
     if (is.null(session)) {
@@ -1756,6 +1774,12 @@ sd_store_value <- function(value, id = NULL, db = NULL, auto_assign = TRUE) {
       }
     }
 
+    # Preview/local mode never uses the database, even if a live connection
+    # object exists in the calling environment
+    if (!is.null(db) && is_csv_mode()) {
+      db <- NULL
+    }
+
     # Check if value already exists (session persistence logic)
     # Works for both database and local CSV modes
     # But only if all_data is available - otherwise we need to defer this check
@@ -1765,7 +1789,8 @@ sd_store_value <- function(value, id = NULL, db = NULL, auto_assign = TRUE) {
       search_session_id <- get_session_id(session, db)
 
       # Check if this value already exists for this session
-      existing_data <- get_session_data(db, search_session_id)
+      local_csv <- if (!is.null(session$userData$local_csv_file)) session$userData$local_csv_file else "preview_data.csv"
+      existing_data <- get_session_data(db, search_session_id, local_csv)
 
       if (!is.null(existing_data) && nrow(existing_data) > 0) {
         if (
@@ -1819,7 +1844,8 @@ sd_store_value <- function(value, id = NULL, db = NULL, auto_assign = TRUE) {
       search_session_id <- get_session_id(session, db)
 
       # Check for existing value in either database or local CSV
-      existing_data <- get_session_data(db, search_session_id)
+      local_csv <- if (!is.null(session$userData$local_csv_file)) session$userData$local_csv_file else "preview_data.csv"
+      existing_data <- get_session_data(db, search_session_id, local_csv)
 
       should_store_new_value <- TRUE
       if (!is.null(existing_data) && nrow(existing_data) > 0) {
@@ -1871,9 +1897,9 @@ format_question_value <- function(val) {
   if (is.null(val) || identical(val, NA) || identical(val, "NA")) {
     return("")
   } else if (length(val) > 1) {
-    return(paste(val, collapse = ", "))
+    return(paste(val, collapse = "|"))
   } else {
-    return(as.character(val))
+    return(val)
   }
 }
 
@@ -1925,11 +1951,39 @@ get_session_id <- function(session, db) {
   return(search_session_id)
 }
 
+# Returns TRUE when the survey runs in preview or local mode, where
+# responses go to a local CSV file and the database (even if connected)
+# must not be used
+is_csv_mode <- function() {
+  settings <- get_settings_yml()
+  if (is.null(settings)) {
+    return(FALSE)
+  }
+  mode <- settings$`survey-settings`$mode
+  if (is.null(mode)) {
+    mode <- settings$mode
+  }
+  isTRUE(mode %in% c("preview", "local"))
+}
+
 # Helper function to get settings.yml file (kebab-case only)
+# Inside a Shiny session, the parsed settings are cached in session$userData
+# so repeated calls (e.g., per question or per sd_store_value) don't re-read
+# the file from disk. Outside a session (e.g., during Quarto rendering of
+# survey.qmd), the file is read directly each time.
 get_settings_yml <- function() {
+  session <- shiny::getDefaultReactiveDomain()
+  if (!is.null(session) && !is.null(session$userData$sd_settings)) {
+    return(session$userData$sd_settings)
+  }
+
   path <- file.path("_survey", "settings.yml")
   if (fs::file_exists(path)) {
-    return(yaml::read_yaml("_survey/settings.yml"))
+    settings <- yaml::read_yaml(path)
+    if (!is.null(session) && !is.null(settings)) {
+      session$userData$sd_settings <- settings
+    }
+    return(settings)
   }
 
   # Fallback: if settings.yml doesn't exist, read directly from survey.qmd YAML header
@@ -1946,13 +2000,13 @@ get_settings_yml <- function() {
           "use-cookies",
           "auto-scroll",
           "rate-survey",
-          "all-questions-required",
+          "all-required",
           "start-page",
           "system-language",
           "highlight-unanswered",
           "highlight-color",
           "capture-metadata",
-          "required-questions"
+          "required"
         )
 
         for (param in server_params) {
@@ -1963,6 +2017,9 @@ get_settings_yml <- function() {
         }
 
         if (length(settings) > 0) {
+          if (!is.null(session)) {
+            session$userData$sd_settings <- settings
+          }
           return(settings)
         }
       },
@@ -1976,13 +2033,13 @@ get_settings_yml <- function() {
 }
 
 # Main function to get session data from any available source (database or local CSV)
-get_session_data <- function(db, search_session_id) {
-  if (!is.null(db)) {
+get_session_data <- function(db, search_session_id, csv_file = "preview_data.csv") {
+  if (!is.null(db) && !is.null(db$db)) {
     # Database mode
     return(get_db_data(db, search_session_id))
   } else {
     # Local CSV mode
-    all_local_data <- get_local_data()
+    all_local_data <- get_local_data(csv_file)
     if (!is.null(all_local_data)) {
       return(all_local_data[all_local_data$session_id == search_session_id, ])
     } else {
@@ -1991,28 +2048,58 @@ get_session_data <- function(db, search_session_id) {
   }
 }
 
-# Helper function to get local CSV data
-get_local_data <- function() {
-  if (file.exists("preview_data.csv")) {
-    tryCatch(
-      {
-        return(utils::read.csv(
-          "preview_data.csv",
-          stringsAsFactors = FALSE
-        ))
-      },
-      error = function(e) {
-        warning("Error reading preview_data.csv: ", e$message)
-        return(NULL)
-      }
-    )
+# In-memory cache of local CSV response data for preview/local modes.
+# These modes run in a single R process on one machine, so all Shiny
+# sessions in the app share this copy. Entries are keyed by absolute file
+# path (multiple surveys in one R session stay isolated) and invalidated
+# whenever the file's mtime changes (external edits or deletion are picked
+# up). write_local_data() refreshes the entry on every save, so reads
+# after a save are served from memory instead of re-reading the file.
+.local_data_cache <- new.env(parent = emptyenv())
+
+local_data_key <- function(csv_file) {
+  normalizePath(csv_file, winslash = "/", mustWork = FALSE)
+}
+
+# Helper function to get local CSV data (served from the in-process cache
+# when the file is unchanged since the last read or write)
+get_local_data <- function(csv_file = "preview_data.csv") {
+  if (!file.exists(csv_file)) {
+    return(NULL)
   }
-  return(NULL)
+  key <- local_data_key(csv_file)
+  mtime <- file.info(csv_file)$mtime
+  entry <- get0(key, envir = .local_data_cache, inherits = FALSE)
+  if (!is.null(entry) && identical(entry$mtime, mtime)) {
+    return(entry$data)
+  }
+  data <- tryCatch(
+    utils::read.csv(csv_file, stringsAsFactors = FALSE),
+    error = function(e) {
+      warning("Error reading ", csv_file, ": ", e$message)
+      NULL
+    }
+  )
+  if (!is.null(data)) {
+    assign(key, list(mtime = mtime, data = data), envir = .local_data_cache)
+  }
+  return(data)
+}
+
+# Write local CSV data to disk and refresh the in-memory cache
+write_local_data <- function(data, csv_file) {
+  utils::write.csv(data, csv_file, row.names = FALSE, na = "")
+  assign(
+    local_data_key(csv_file),
+    list(mtime = file.info(csv_file)$mtime, data = data),
+    envir = .local_data_cache
+  )
+  invisible(data)
 }
 
 # Internal function to get data from database for a specific session only
 get_db_data <- function(db, session_id) {
-  if (is.null(db)) {
+  if (is.null(db) || is.null(db$db)) {
     return(NULL)
   }
 

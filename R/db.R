@@ -1,8 +1,41 @@
+# Parse a PostgreSQL connection URL into components.
+# Returns a list with host, port, dbname, user, and password.
+# If the password is a placeholder (e.g. [YOUR-PASSWORD]), returns NULL for password.
+parse_db_url <- function(url) {
+    # Expected format: postgresql://user:password@host:port/dbname
+    pattern <- "^postgres(?:ql)?://([^:]+):(.+)@([^:]+):(\\d+)/(.+)$"
+    if (!grepl(pattern, url)) {
+        cli::cli_abort(c(
+            "Invalid database URL format.",
+            "i" = "Expected: {.val postgresql://user:password@host:port/dbname}"
+        ))
+    }
+    matches <- regmatches(url, regexec(pattern, url))[[1]]
+    pw <- matches[3]
+    # Return NULL for placeholder passwords (e.g. [YOUR-PASSWORD])
+    if (grepl("^\\[.*\\]$", pw)) {
+        pw <- NULL
+    }
+    list(
+        user = matches[2],
+        password = pw,
+        host = matches[4],
+        port = matches[5],
+        dbname = matches[6]
+    )
+}
+
 #' Configure database settings
 #'
 #' Set up or modify database configuration settings in a .env file. These settings
 #' are used to establish database connections for storing survey responses.
 #'
+#' @param url Character string. A full PostgreSQL connection URL, e.g.
+#'   `"postgresql://user:password@host:port/dbname"`. If provided, the URL is
+#'   parsed to extract `host`, `port`, `dbname`, `user`, and `password`. If the
+#'   password portion is a placeholder (e.g. `[YOUR-PASSWORD]`), you will be
+#'   prompted to enter it. Individual parameters override values parsed from the
+#'   URL.
 #' @param host Character string. Database host
 #' @param dbname Character string. Database name
 #' @param port Character string. Database port
@@ -17,6 +50,9 @@
 #' if (interactive()) {
 #'   # Interactive setup
 #'   sd_db_config()
+#'
+#'   # Quick setup from Supabase connection URL
+#'   sd_db_config(url = "postgresql://postgres.ref:password@host:6543/postgres")
 #'
 #'   # Update specific settings
 #'   sd_db_config(table = "new_table")
@@ -36,6 +72,7 @@
 #'
 #' @export
 sd_db_config <- function(
+    url = NULL,
     host = NULL,
     dbname = NULL,
     port = NULL,
@@ -68,9 +105,40 @@ sd_db_config <- function(
         current$table <- Sys.getenv("SD_TABLE", current$table)
     }
 
+    # Parse URL if provided
+    if (!is.null(url)) {
+        parsed <- parse_db_url(url)
+        if (is.null(host)) host <- parsed$host
+        if (is.null(port)) port <- parsed$port
+        if (is.null(dbname)) dbname <- parsed$dbname
+        if (is.null(user)) user <- parsed$user
+        if (is.null(password) && !is.null(parsed$password)) {
+            password <- parsed$password
+        }
+        # Prompt for password if not resolved
+        if (is.null(password)) {
+            if (!base::interactive()) {
+                cli::cli_abort("Password is required but session is not interactive.")
+            }
+            password <- readline("Enter database password: ")
+        }
+        # Prompt for table name if not provided
+        if (is.null(table)) {
+            if (base::interactive()) {
+                input <- readline(sprintf(
+                    "Table name [%s]: ", current$table
+                ))
+                table <- if (input == "") current$table else input
+            } else {
+                table <- current$table
+            }
+        }
+    }
+
     # If no parameters provided and interactive not set, default to interactive
     if (
         is.null(interactive) &&
+            is.null(url) &&
             all(sapply(
                 list(host, dbname, port, user, table, password),
                 is.null
@@ -171,36 +239,39 @@ sd_db_config <- function(
     invisible(current)
 }
 
-#' Connect to database
+#' Connect to a PostgreSQL database for storing survey responses
 #'
-#' Establish a connection to the database using settings from .env file. This function
-#' creates a connection pool for efficient database access and provides options for
-#' local data storage when needed.
+#' Establishes a connection pool to a PostgreSQL database (e.g. Supabase) using
+#' credentials from a `.env` file. The survey operating mode (`"database"`,
+#' `"preview"`, or `"local"`) is controlled via the `mode` key under
+#' `survey-settings` in `survey.qmd`, not by this function.
 #'
-#' @param env_file Character string. Path to the env file. Defaults to ".env"
-#' @param ignore Logical. If `TRUE`, data will be saved to a local CSV file
-#' instead of the database. Defaults to `FALSE`.
+#' @param env_file Character string. Path to the env file. Defaults to `".env"`.
+#' @param ignore Logical. Deprecated. Use `mode: preview` in `survey.qmd` YAML
+#'   instead. If `TRUE`, returns `NULL` with a deprecation warning. Defaults to
+#'   `NULL`.
 #' @param gssencmode Character string. The GSS encryption mode for the database
 #'   connection. Defaults to `"auto"`. Options are:
-#'   - `"auto"`: Tries `"prefer"` first, then falls back to `"disable"` if GSSAPI negotiation fails
-#'   - `"prefer"`: Uses GSSAPI encryption if available, plain connection otherwise
+#'   - `"auto"`: Tries `"prefer"` first, then falls back to `"disable"` if
+#'     GSSAPI negotiation fails
+#'   - `"prefer"`: Uses GSSAPI encryption if available, plain connection
+#'     otherwise
 #'   - `"disable"`: Disables GSSAPI encryption entirely
-#'   NOTE: If you have verified all connection details are correct but still cannot
-#'   access the database, try setting this to `"disable"`.
+#'   NOTE: If you have verified all connection details are correct but still
+#'   cannot access the database, try setting this to `"disable"`.
 #'
-#' @return A list containing the database connection pool (`db`) and table name (`table`),
-#'   or `NULL` if ignore is `TRUE` or if connection fails
+#' @return A list containing:
+#'   - `db`: The database connection pool
+#'   - `table`: The database table name
+#'
+#'   Returns `NULL` if the database connection fails or `ignore = TRUE`.
 #'
 #' @examples
 #' if (interactive()) {
-#'   # Connect using settings from .env
 #'   db <- sd_db_connect()
 #'
-#'   # Use local storage instead of database
-#'   db <- sd_db_connect(ignore = TRUE)
-#'
 #'   # Close connection when done
-#'   if (!is.null(db)) {
+#'   if (!is.null(db$db)) {
 #'     pool::poolClose(db$db)
 #'   }
 #' }
@@ -208,14 +279,16 @@ sd_db_config <- function(
 #' @export
 sd_db_connect <- function(
     env_file = ".env",
-    ignore = FALSE,
+    ignore = NULL,
     gssencmode = "auto"
 ) {
-    if (ignore) {
-        cli::cli_alert_info(
-            "Database connection ignored. Saving data to local CSV file."
+    # Handle deprecated ignore argument
+    if (!is.null(ignore)) {
+        warning(
+            '`ignore` is deprecated. Use `mode: preview` in your survey.qmd YAML instead.',
+            call. = FALSE
         )
-        return(NULL)
+        if (isTRUE(ignore)) return(NULL)
     }
 
     # Load environment variables
@@ -259,7 +332,9 @@ sd_db_connect <- function(
     tryCatch(
         {
             pool <- try_db_connection(params, gssencmode)
-            cli::cli_alert_success("Successfully connected to the database.")
+            cli::cli_alert_success(
+                "Successfully connected to the database."
+            )
             return(list(db = pool, table = params$table))
         },
         error = function(e) {
@@ -346,8 +421,8 @@ sd_db_connect <- function(
 #' }
 #' @export
 sd_get_data <- function(db, table = NULL, refresh_interval = NULL) {
-    if (is.null(db)) {
-        warning("Database is not connected, db is NULL")
+    if (is.null(db) || is.null(db$db)) {
+        warning("Database is not connected")
         return(NULL)
     }
 
@@ -391,6 +466,310 @@ sd_get_data <- function(db, table = NULL, refresh_interval = NULL) {
         # If not in a reactive context, just return the data once
         return(fetch_data())
     }
+}
+
+# Helper function to convert value to numeric if it looks like a number
+# Handles both single values and vectors
+try_numeric <- function(x) {
+    if (is.null(x) || length(x) == 0) {
+        return(x)
+    }
+    # Handle vectors element-wise
+    result <- sapply(
+        x,
+        function(val) {
+            if (is.na(val) || identical(val, "")) {
+                return(val)
+            }
+            # Try to convert to numeric
+            numeric_val <- suppressWarnings(as.numeric(val))
+            if (!is.na(numeric_val)) {
+                return(numeric_val)
+            }
+            return(val)
+        },
+        USE.NAMES = FALSE
+    )
+    return(result)
+}
+
+# Helper function to split pipe-separated string into vector
+# Used for mc_multiple and mc_multiple_buttons question types
+split_multi <- function(x) {
+    if (is.null(x) || length(x) == 0) {
+        return(x)
+    }
+    # Only split if it's a single string containing "|"
+    if (length(x) == 1 && is.character(x) && grepl("|", x, fixed = TRUE)) {
+        return(strsplit(x, "|", fixed = TRUE)[[1]])
+    }
+    return(x)
+}
+
+#' Access question values from survey responses
+#'
+#' This function provides a functional interface to access question values from
+#' the `all_data` reactive values list. It is equivalent to using `all_data$question_id`
+#' but allows programmatic access using a string variable or unquoted name.
+#' Multiple question IDs can be provided to retrieve multiple values at once.
+#'
+#' @param ... One or more question IDs to retrieve. Each can be provided as an
+#'   unquoted name (e.g., `age`) or a quoted string (e.g., `"age"`).
+#' @param as_numeric Logical or NULL. Controls numeric type conversion:
+#'
+#' | Value | Behavior |
+#' |-------|----------|
+#' | `NULL` (default) | Auto-detect: checks if value looks numeric, converts if so. Non-numeric values stay as character. |
+#' | `TRUE` | Force convert: always calls `as.numeric()`. Non-convertible values become `NA`. |
+#' | `FALSE` | Never convert: returns value as-is, no detection. |
+#'
+#' @param as_vector Logical or NULL. Controls splitting of pipe-separated values:
+#'
+#' | Value | Behavior |
+#' |-------|----------|
+#' | `NULL` (default) | Auto-detect: checks if pipe symbol exists, splits if found. |
+#' | `TRUE` | Force split: always splits on pipe. |
+#' | `FALSE` | Never split: returns value as-is, no detection. |
+#'
+#' @return If a single question ID is provided, returns the value of that question.
+#'   If multiple question IDs are provided, returns an unnamed vector of values.
+#'   Returns `NULL` for any question ID that doesn't exist.
+#'
+#' @examples
+#' \dontrun{
+#'   library(surveydown)
+#'
+#'   server <- function(input, output, session) {
+#'     # Single value access - all equivalent:
+#'     age1 <- all_data$age
+#'     age2 <- sd_values(age)        # Unquoted (recommended)
+#'     age3 <- sd_values("age")      # Quoted (also works)
+#'
+#'     # Multiple values at once:
+#'     values <- sd_values(age, name, country)
+#'     # Returns values with auto-detection (numeric converted, pipes split)
+#'
+#'     # Default behavior (NULL) auto-detects and converts numeric values:
+#'     age <- sd_values(age)
+#'     # If age is "25", returns 25 (numeric)
+#'     # If age is "hello", returns "hello" (character, not convertible)
+#'
+#'     # Force numeric conversion (may produce NA):
+#'     val <- sd_values(some_field, as_numeric = TRUE)
+#'     # "123" becomes 123, "hello" becomes NA
+#'
+#'     # Never convert to numeric (e.g., ZIP codes with leading zeros):
+#'     zip <- sd_values(zip_code, as_numeric = FALSE)
+#'     # "01234" stays as "01234", not converted to 1234
+#'
+#'     # Default behavior (NULL) auto-detects pipe and splits:
+#'     fruits <- sd_values(fav_fruits)
+#'     # If value is "apple|banana|orange", returns c("apple", "banana", "orange")
+#'     # If value is "apple", returns "apple" (no pipe, no split)
+#'
+#'     # Force split (even if no pipe present):
+#'     vals <- sd_values(some_field, as_vector = TRUE)
+#'
+#'     # Never split (keep as single string):
+#'     raw <- sd_values(fav_fruits, as_vector = FALSE)
+#'     # "apple|banana|orange" stays as "apple|banana|orange"
+#'
+#'     # Check number of selections:
+#'     if (length(sd_values(fav_fruits)) > 3) {
+#'       # User selected more than 3 fruits
+#'     }
+#'
+#'     # Check if specific option was selected:
+#'     if ("apple" %in% sd_values(fav_fruits)) {
+#'       # User selected apple
+#'     }
+#'
+#'     sd_server(db = db)
+#'   }
+#' }
+#'
+#' @export
+sd_values <- function(..., as_numeric = NULL, as_vector = NULL) {
+    # Capture all arguments (excluding named params)
+    args <- substitute(list(...))[-1] # Remove 'list' from the beginning
+
+    # If no arguments, stop
+    if (length(args) == 0) {
+        stop("At least one question ID must be provided")
+    }
+
+    # Validate as_numeric parameter
+    if (!is.null(as_numeric) && !is.logical(as_numeric)) {
+        stop("as_numeric must be NULL, TRUE, or FALSE")
+    }
+
+    # Validate as_vector parameter
+    if (!is.null(as_vector) && !is.logical(as_vector)) {
+        stop("as_vector must be NULL, TRUE, or FALSE")
+    }
+
+    calling_env <- parent.frame()
+
+    # Check if all_data exists in the calling environment or parent environments
+    if (!exists("all_data", envir = calling_env, inherits = TRUE)) {
+        stop("all_data not found. Make sure sd_server() has been called.")
+    }
+
+    all_data <- get("all_data", envir = calling_env, inherits = TRUE)
+
+    # Convert each argument to a string
+    question_id_strs <- sapply(args, function(arg) {
+        if (is.character(arg)) {
+            # Already a string
+            arg
+        } else {
+            # Convert symbol to string
+            deparse(arg)
+        }
+    })
+
+    # Get all values and apply transformations
+    values <- lapply(question_id_strs, function(id) {
+        val <- all_data[[id]]
+
+        # Handle as_vector: splitting pipe-separated values
+        if (isTRUE(as_vector)) {
+            # Force split on pipe (no detection)
+            if (!is.null(val) && length(val) == 1 && is.character(val)) {
+                val <- strsplit(val, "|", fixed = TRUE)[[1]]
+            }
+        } else if (isFALSE(as_vector)) {
+            # Never split, return as-is (no detection)
+            # Do nothing, val stays as-is
+        } else {
+            # as_vector is NULL: auto-detect, split if pipe found
+            val <- split_multi(val)
+        }
+
+        # Handle as_numeric: type conversion
+        if (isTRUE(as_numeric)) {
+            # Force convert to numeric (no detection, may produce NA)
+            if (is.null(val)) val else as.numeric(val)
+        } else if (isFALSE(as_numeric)) {
+            # Never convert, return as-is (no detection)
+            val
+        } else {
+            # as_numeric is NULL: auto-detect, convert if looks numeric
+            try_numeric(val)
+        }
+    })
+
+    # If only one question ID was provided
+    if (length(question_id_strs) == 1) {
+        result <- values[[1]]
+        # For single question, return as-is (could be vector if as_vector = TRUE)
+        if (length(result) == 1) {
+            return(unname(result))
+        }
+        return(unname(result))
+    }
+
+    # For multiple question IDs, flatten to vector
+    values <- unlist(values)
+    return(unname(values))
+}
+
+#' Access question values from survey responses (alias)
+#'
+#' This is an alias for [sd_values()].
+#'
+#' This function provides a functional interface to access question values from
+#' the `all_data` reactive values list. It is equivalent to using `all_data$question_id`
+#' but allows programmatic access using a string variable or unquoted name.
+#' Multiple question IDs can be provided to retrieve multiple values at once.
+#'
+#' @param ... One or more question IDs to retrieve. Each can be provided as an
+#'   unquoted name (e.g., `age`) or a quoted string (e.g., `"age"`).
+#' @param as_numeric Logical or NULL. Controls numeric type conversion:
+#'
+#' | Value | Behavior |
+#' |-------|----------|
+#' | `NULL` (default) | Auto-detect: checks if value looks numeric, converts if so. Non-numeric values stay as character. |
+#' | `TRUE` | Force convert: always calls `as.numeric()`. Non-convertible values become `NA`. |
+#' | `FALSE` | Never convert: returns value as-is, no detection. |
+#'
+#' @param as_vector Logical or NULL. Controls splitting of pipe-separated values:
+#'
+#' | Value | Behavior |
+#' |-------|----------|
+#' | `NULL` (default) | Auto-detect: checks if pipe symbol exists, splits if found. |
+#' | `TRUE` | Force split: always splits on pipe. |
+#' | `FALSE` | Never split: returns value as-is, no detection. |
+#'
+#' @return If a single question ID is provided, returns the value of that question.
+#'   If multiple question IDs are provided, returns an unnamed vector of values.
+#'   Returns `NULL` for any question ID that doesn't exist.
+#'
+#' @examples
+#' \dontrun{
+#'   library(surveydown)
+#'
+#'   server <- function(input, output, session) {
+#'     # Single value access - all equivalent:
+#'     age1 <- all_data$age
+#'     age2 <- sd_value(age)        # Unquoted (recommended)
+#'     age3 <- sd_value("age")      # Quoted (also works)
+#'
+#'     # Multiple values at once:
+#'     values <- sd_value(age, name, country)
+#'     # Returns values with auto-detection (numeric converted, pipes split)
+#'
+#'     # Default behavior (NULL) auto-detects and converts numeric values:
+#'     age <- sd_value(age)
+#'     # If age is "25", returns 25 (numeric)
+#'     # If age is "hello", returns "hello" (character, not convertible)
+#'
+#'     # Force numeric conversion (may produce NA):
+#'     val <- sd_value(some_field, as_numeric = TRUE)
+#'     # "123" becomes 123, "hello" becomes NA
+#'
+#'     # Never convert to numeric (e.g., ZIP codes with leading zeros):
+#'     zip <- sd_value(zip_code, as_numeric = FALSE)
+#'     # "01234" stays as "01234", not converted to 1234
+#'
+#'     # Default behavior (NULL) auto-detects pipe and splits:
+#'     fruits <- sd_value(fav_fruits)
+#'     # If value is "apple|banana|orange", returns c("apple", "banana", "orange")
+#'     # If value is "apple", returns "apple" (no pipe, no split)
+#'
+#'     # Force split (even if no pipe present):
+#'     vals <- sd_value(some_field, as_vector = TRUE)
+#'
+#'     # Never split (keep as single string):
+#'     raw <- sd_value(fav_fruits, as_vector = FALSE)
+#'     # "apple|banana|orange" stays as "apple|banana|orange"
+#'
+#'     # Check number of selections:
+#'     if (length(sd_value(fav_fruits)) > 3) {
+#'       # User selected more than 3 fruits
+#'     }
+#'
+#'     # Check if specific option was selected:
+#'     if ("apple" %in% sd_value(fav_fruits)) {
+#'       # User selected apple
+#'     }
+#'
+#'     sd_server(db = db)
+#'   }
+#' }
+#'
+#' @seealso [sd_values()]
+#' @export
+sd_value <- function(..., as_numeric = NULL, as_vector = NULL) {
+    # Evaluate sd_values() in the parent environment to avoid extra frame
+    eval(
+        substitute(sd_values(
+            ...,
+            as_numeric = as_numeric,
+            as_vector = as_vector
+        )),
+        parent.frame()
+    )
 }
 
 # Convert to SQL

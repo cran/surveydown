@@ -52,6 +52,11 @@ const surveydownCookies = {
                 currentData.question_history = pageData.question_history;
             }
 
+            // Store randomization_orders separately at top level (for shuffle persistence)
+            if (pageData.randomization_orders) {
+                currentData.randomization_orders = pageData.randomization_orders;
+            }
+
             const date = new Date();
             date.setTime(date.getTime() + (30 * 24 * 60 * 60 * 1000));
             const cookieValue = "surveydown_answers=" + JSON.stringify(currentData) +
@@ -86,6 +91,34 @@ const surveydownCookies = {
             console.error("Error getting answer data:", e);
             return null;
         }
+    },
+
+    clear: function() {
+        try {
+            // Clear survey session cookie
+            document.cookie = "surveydown_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Strict";
+            
+            // Clear survey answers cookie  
+            document.cookie = "surveydown_answers=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Strict";
+            
+            console.log("Survey cookies cleared");
+        } catch (e) {
+            console.error("Error clearing survey cookies:", e);
+        }
+    },
+
+    forceRestart: function() {
+        try {
+            // Clear all survey cookies
+            this.clear();
+            
+            // Log restart action
+            console.log("Survey restart initiated");
+            
+            // Note: Page reload will be handled by the calling function
+        } catch (e) {
+            console.error("Error during force restart:", e);
+        }
     }
 };
 
@@ -108,11 +141,13 @@ Shiny.addCustomMessageHandler('updatePageHistory', function(message) {
         const existingPageData = existingData[message.pageId] || {};
 
         // Merge: preserve existing answers but update page_history and question_history at top level
+        // Also preserve randomization_orders from existing data
         const mergedPageData = {
             answers: existingPageData.answers || {},
             last_timestamp: existingPageData.last_timestamp || null,
             page_history: message.pageData.page_history,  // Will be stored at top level
-            question_history: message.pageData.question_history || []  // Will be stored at top level
+            question_history: message.pageData.question_history || [],  // Will be stored at top level
+            randomization_orders: existingData.randomization_orders || null  // Preserve from existing
         };
 
         // Update cookie with merged data

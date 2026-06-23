@@ -10,6 +10,7 @@ sd_question(
   label = NULL,
   option = NULL,
   options = NULL,
+  option_attr = NULL,
   cols = "80",
   direction = "horizontal",
   status = "default",
@@ -25,7 +26,9 @@ sd_question(
   resize = NULL,
   row = NULL,
   default = NULL,
+  image = NULL,
   yml = "questions.yml",
+  matrix_question_width = NULL,
   ...
 )
 }
@@ -34,9 +37,10 @@ sd_question(
 variable name in the resulting survey data.}
 
 \item{type}{Specifies the type of question. Possible values are \code{"select"},
-\code{"mc"}, \code{"mc_multiple"}, \code{"mc_buttons"}, \code{"mc_multiple_buttons"}, \code{"text"},
-\code{"textarea"}, \code{"numeric"}, \code{"slider"}, \code{"slider_numeric"}, \code{"date"},
-\code{"daterange"}, and \code{"matrix"}. Defaults to \code{NULL}.}
+\code{"mc"}, \code{"mc_multiple"}, \code{"mc_buttons"}, \code{"mc_multiple_buttons"},
+\code{"mc_image"}, \code{"mc_multiple_image"}, \code{"text"}, \code{"textarea"}, \code{"numeric"},
+\code{"slider"}, \code{"slider_numeric"}, \code{"date"}, \code{"daterange"}, \code{"matrix"}, and
+\code{"matrix_multiple"}. Defaults to \code{NULL}.}
 
 \item{label}{Character string. The label for the UI element, which can be
 formatted with markdown. Defaults to \code{NULL}}
@@ -47,9 +51,8 @@ question type. Can be provided in multiple formats:
 \itemize{
 \item Named vector: \code{c("Display A" = "value_a", "Display B" = "value_b")} -
 Names are shown in UI, values are stored in database
-\item Unnamed character vector: \code{c("Option 1", "Option 2")} - Values are shown in UI
-and automatically converted to snake_case for database storage
-(e.g., "option_1", "option_2")
+\item Unnamed character vector: \code{c("Option 1", "Option 2")} - Values are used as both
+display labels and stored values (e.g., "Option 1" is shown and stored as "Option 1")
 \item Unnamed numeric vector: \code{c(1, 2, 3)} - For non-slider questions, converted to
 \code{c("1" = "1", "2" = "2", "3" = "3")}. For \code{slider_numeric}, kept as numeric.
 }}
@@ -57,6 +60,10 @@ and automatically converted to snake_case for database storage
 \item{options}{Alias for \code{option}. Either \code{option} or \code{options} can be used.
 If both are provided, \code{option} takes precedence. Supports the same formats
 as \code{option}.}
+
+\item{option_attr}{Character vector. Optional HTML attributes to apply to
+individual options for \code{"mc"} and \code{"mc_multiple"} question types. Each
+element corresponds to an option in the same position. Defaults to \code{NULL}.}
 
 \item{cols}{Integer. Number of columns for the \code{"textarea"} question type.
 Defaults to \code{80}.}
@@ -78,8 +85,10 @@ Defaults to \code{"100\%"}.}
 \item{label_select}{Character string. The label for the select input.
 Defaults to \code{"Choose an option..."}.}
 
-\item{grid}{Logical. Whether to show a grid for slider input.
-Defaults to \code{TRUE}.}
+\item{grid}{Logical. Whether to show tick marks and labels under each
+position of a \code{"slider"} question. Defaults to \code{TRUE}. Only the major
+(labeled) tick marks are shown; the small minor tick marks between
+positions are hidden by surveydown's styling.}
 
 \item{individual}{Logical. Whether buttons in a group should be individually
 styled. Defaults to \code{TRUE}.}
@@ -96,16 +105,42 @@ Defaults to \code{TRUE}.}
 \item{resize}{Character string. Resize option for textarea input.
 Defaults to \code{NULL}.}
 
-\item{row}{List. Used for \code{"matrix"} type questions. Contains the row labels
-and their corresponding IDs.}
+\item{row}{List. Used for \code{"matrix"} and \code{"matrix_multiple"} type
+questions. Contains the row labels and their corresponding IDs.}
 
 \item{default}{Numeric, length 1 (for a single sided slider), or 2 for a
 two sided (range based) slider. Values to be used as the starting default
 for the slider. Defaults to the median of values.}
 
+\item{image}{Character vector. Required for \code{"mc_image"} and
+\code{"mc_multiple_image"} question types: image paths or URLs, one per
+option, in the same order as \code{option}. Paths are used as-is in the
+image \code{src}, so they should resolve against the survey's \code{images} or
+\code{www} folder (e.g. \code{"images/cat.png"}) or be full URLs.
+
+For image-choice questions, the \code{option} names control captions:
+\itemize{
+\item Named options (e.g. \code{c("Cat" = "cat", "Dog" = "dog")}) show the
+names as text captions beneath each image.
+\item An unnamed option vector (e.g. \code{c("cat", "dog")}) shows the
+images only, with no captions. The values are still stored in the
+data as usual.
+}
+This differs from the other multiple-choice types, where an unnamed
+option vector uses the values as both the displayed labels and the
+stored values.}
+
 \item{yml}{Character string. The name of the YAML file to load question configurations from.
 Defaults to \code{"questions.yml"}. Custom YAML files can be specified, either in
 the root directory or subdirectories (e.g., \code{"folder/custom.yml"}).}
+
+\item{matrix_question_width}{The width of the matrix question column. Accepts
+numeric (e.g., \code{40}), character without percent (e.g., \code{"40"}), or character
+with percent (e.g., \code{"40\%"}) - all are treated equivalently as percentages.
+Defaults to \code{NULL}, which auto-calculates the width based on the longest row
+label (using a heuristic of 20\% base + 0.5\% per character, bounded between
+30\% and 80\%). The remaining width is automatically distributed equally
+among the option columns.}
 
 \item{...}{Additional arguments, often specific to different input types.
 Examples include \code{pre}, \code{sep}, \code{step}, and \code{animate} for \code{"slider"} and
@@ -126,6 +161,8 @@ The function supports various question types:
 \item \code{"mc_multiple"}: Multiple choice (multiple selections allowed)
 \item \code{"mc_buttons"}: Multiple choice with button-style options (single selection)
 \item \code{"mc_multiple_buttons"}: Multiple choice with button-style options (multiple selections allowed)
+\item \code{"mc_image"}: Multiple choice where each option is an image card (single selection)
+\item \code{"mc_multiple_image"}: Multiple choice where each option is an image card (multiple selections allowed)
 \item \code{"text"}: Single-line text question
 \item \code{"textarea"}: Multi-line text question
 \item \code{"numeric"}: Numeric question
@@ -133,12 +170,17 @@ The function supports various question types:
 \item \code{"slider_numeric"}: Extended numeric slider question
 \item \code{"date"}: Date question
 \item \code{"daterange"}: Date range question
-\item \code{"matrix"}: Matrix-style question with rows and columns
+\item \code{"matrix"}: Matrix-style question with rows and columns (single
+selection per row, radio buttons)
+\item \code{"matrix_multiple"}: Matrix-style question where each row allows
+multiple selections (checkboxes)
 }
 
-For \code{"matrix"} type questions, use the \code{row} parameter to define the rows of
-the matrix. Each element in the \code{row} list should have a name (used as the
-row ID) and a value (used as the row label).
+For \code{"matrix"} and \code{"matrix_multiple"} type questions, use the \code{row}
+parameter to define the rows of the matrix. Each element in the \code{row}
+list should have a name (used as the row ID) and a value (used as the
+row label). Each row becomes its own sub-question with the ID
+\verb{<question_id>_<row_id>}, stored as a separate column in the data.
 }
 \examples{
 if (interactive()) {
